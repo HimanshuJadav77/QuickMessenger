@@ -94,12 +94,11 @@ class _MyProfileState extends State<MyProfile> {
     return StreamBuilder(
         stream: userData.snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(
-              child: CircularProgressIndicator(),
-            );
+          if (snapshot.connectionState != ConnectionState.waiting) {
+            if (snapshot.data!.exists == false) {
+              return Center();
+            }
           }
-
           if (snapshot.hasData) {
             final data = snapshot.data?.data() as Map<String, dynamic>;
             username = data["username"].toString();

@@ -52,21 +52,19 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
     setFollowFollowing();
     getRequestState();
   }
- getRequestState() async {
-  final get =await  _firestore
-       .collection("Users")
-       .doc(currentUserId)
-       .collection("requests")
-       .doc(widget.userid).get();
-  if(get.exists){
-    final request = get.data()?["requested"];
-    if(request == true){
-      setState(() {
-        requested = true;
-      });
+
+  getRequestState() async {
+    final get = await _firestore.collection("Users").doc(currentUserId).collection("requests").doc(widget.userid).get();
+    if (get.exists) {
+      final request = get.data()?["requested"];
+      if (request == true) {
+        setState(() {
+          requested = true;
+        });
+      }
     }
   }
- }
+
   setFollowFollowing() async {
     final myfollower = await FirebaseFirestore.instance
         .collection("Users")
@@ -337,13 +335,17 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
               .snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData || snapshot.data!.exists == false) {
-              FirebaseFirestore.instance
-                  .collection("block")
-                  .doc(widget.userid)
-                  .collection("blockedid")
-                  .doc(currentUserId)
-                  .set({"blocked": false});
-              return CircularProgressIndicator();
+              if (snapshot.connectionState != ConnectionState.waiting) {
+                FirebaseFirestore.instance
+                    .collection("block")
+                    .doc(widget.userid)
+                    .collection("blockedid")
+                    .doc(currentUserId)
+                    .set({"blocked": false});
+                return Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
             }
             if (snapshot.hasData) {
               final blockState = snapshot.data!["blocked"];
@@ -368,19 +370,18 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
                         .doc("mode")
                         .snapshots(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Center();
-                      }
                       if (!snapshot.hasData || snapshot.data!.exists == false) {
-                        FirebaseFirestore.instance
-                            .collection("Users")
-                            .doc(widget.userid)
-                            .collection("privacy")
-                            .doc("mode")
-                            .set({"privacy": "public"});
-                        return Center(
-                          child: CircularProgressIndicator(),
-                        );
+                        if (snapshot.connectionState != ConnectionState.waiting) {
+                          FirebaseFirestore.instance
+                              .collection("Users")
+                              .doc(widget.userid)
+                              .collection("privacy")
+                              .doc("mode")
+                              .set({"privacy": "public"});
+                          return Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
                       }
 
                       final privacy = snapshot.data?["privacy"];
@@ -490,33 +491,29 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
                                                       .where("follower", isEqualTo: true)
                                                       .snapshots(),
                                                   builder: (context, snapshot) {
-                                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                                                    if (snapshot.connectionState != ConnectionState.waiting) {
+                                                      if (!snapshot.hasData && snapshot.data!.docs.isEmpty) {
+                                                        _firestore
+                                                            .collection("Users")
+                                                            .doc(widget.userid)
+                                                            .collection("followers")
+                                                            .doc(currentUserId)
+                                                            .set({"follower": false});
+                                                        return Center(
+                                                          child: CircularProgressIndicator(),
+                                                        );
+                                                      }
+                                                    }
+                                                    if (snapshot.hasData) {
                                                       return Padding(
                                                         padding: const EdgeInsets.only(left: 70, top: 5),
                                                         child: Text(
-                                                          "0",
+                                                          "${snapshot.data?.docs.length}",
                                                           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
                                                         ),
                                                       );
                                                     }
-                                                    if (!snapshot.hasData && snapshot.data!.docs.isEmpty) {
-                                                      _firestore
-                                                          .collection("Users")
-                                                          .doc(widget.userid)
-                                                          .collection("followers")
-                                                          .doc(currentUserId)
-                                                          .set({"follower": false});
-                                                      return Center(
-                                                        child: CircularProgressIndicator(),
-                                                      );
-                                                    }
-                                                    return Padding(
-                                                      padding: const EdgeInsets.only(left: 70, top: 5),
-                                                      child: Text(
-                                                        "${snapshot.data?.docs.length}",
-                                                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
-                                                      ),
-                                                    );
+                                                    return Center();
                                                   }),
                                             ),
                                             Positioned(
@@ -530,33 +527,29 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
                                                       .where("following", isEqualTo: true)
                                                       .snapshots(),
                                                   builder: (context, snapshot) {
-                                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                                                    if (snapshot.connectionState != ConnectionState.waiting) {
+                                                      if (!snapshot.hasData && snapshot.data!.docs.isEmpty) {
+                                                        _firestore
+                                                            .collection("Users")
+                                                            .doc(widget.userid)
+                                                            .collection("following")
+                                                            .doc(currentUserId)
+                                                            .set({"following": false});
+                                                        return Center(
+                                                          child: CircularProgressIndicator(),
+                                                        );
+                                                      }
+                                                    }
+                                                    if (snapshot.hasData) {
                                                       return Padding(
                                                         padding: const EdgeInsets.only(left: 70, top: 5),
                                                         child: Text(
-                                                          "0",
+                                                          "${snapshot.data!.docs.length}",
                                                           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
                                                         ),
                                                       );
                                                     }
-                                                    if (!snapshot.hasData && snapshot.data!.docs.isEmpty) {
-                                                      _firestore
-                                                          .collection("Users")
-                                                          .doc(widget.userid)
-                                                          .collection("following")
-                                                          .doc(currentUserId)
-                                                          .set({"following": false});
-                                                      return Center(
-                                                        child: CircularProgressIndicator(),
-                                                      );
-                                                    }
-                                                    return Padding(
-                                                      padding: const EdgeInsets.only(left: 70, top: 5),
-                                                      child: Text(
-                                                        "${snapshot.data!.docs.length}",
-                                                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
-                                                      ),
-                                                    );
+                                                    return Center();
                                                   }),
                                             ),
                                           ],
@@ -704,17 +697,16 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
                                     .doc(widget.userid)
                                     .snapshots(),
                                 builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                    return Center();
-                                  }
                                   if (!snapshot.hasData || snapshot.data!.exists == false) {
-                                    _firestore
-                                        .collection("Users")
-                                        .doc(currentUserId)
-                                        .collection("following")
-                                        .doc(widget.userid)
-                                        .set({"following": false});
-                                    return Center();
+                                    if (snapshot.connectionState != ConnectionState.waiting) {
+                                      _firestore
+                                          .collection("Users")
+                                          .doc(currentUserId)
+                                          .collection("following")
+                                          .doc(widget.userid)
+                                          .set({"following": false});
+                                      return Center();
+                                    }
                                   }
 
                                   if (snapshot.hasData) {

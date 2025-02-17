@@ -158,7 +158,7 @@ class _ChatHomeState extends State<ChatHome> {
                                         },
                                         onTap: () {
                                           if (!selectedStates[index] && !selectedStates.contains(true)) {
-                                            Navigator.pushReplacement(
+                                            Navigator.push(
                                               context,
                                               PageRouteBuilder(
                                                 pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
@@ -168,7 +168,6 @@ class _ChatHomeState extends State<ChatHome> {
                                                   about: userData["about"],
                                                   email: userData["email"],
                                                 ),
-                                                // The page to navigate to
                                                 transitionsBuilder: (context, animation, secondaryAnimation, child) {
                                                   const begin = Offset(2.0, 1.0);
                                                   const end = Offset.zero;
@@ -228,13 +227,10 @@ class _ChatHomeState extends State<ChatHome> {
                                                       .orderBy("time")
                                                       .snapshots(),
                                                   builder: (context, snapshot) {
-                                                    if (snapshot.connectionState == ConnectionState.waiting) {
-                                                      return Center();
-                                                    }
                                                     if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                                                       return Center();
                                                     }
-
+                                                    if (snapshot.connectionState == ConnectionState.waiting) {}
                                                     if (snapshot.hasData) {
                                                       final data = snapshot.data!.docs.toList();
                                                       final message = data.last.data()["message"];

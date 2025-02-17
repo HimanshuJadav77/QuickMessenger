@@ -20,7 +20,6 @@ import 'package:QuickMessenger/Ui/sendmedia.dart';
 import 'package:QuickMessenger/Ui/snackbar.dart';
 import 'package:QuickMessenger/networkcheck.dart';
 import '../Ui/sendcard.dart';
-import 'chatscreenmethod.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen(
@@ -209,6 +208,189 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setFollowFollowing();
     WidgetsBinding.instance.addObserver(this);
     NetworkCheck().initializeInternetStatus(context);
+  }
+
+  String getFileType(String? extension) {
+    if ([
+      '.mp3',
+      '.wav',
+      '.flac',
+      '.aac',
+      '.ogg',
+      '.m4a',
+      '.wma',
+      '.alac',
+      '.ape',
+      '.ac3',
+      '.opus',
+      '.aiff',
+      '.mid',
+      '.mka',
+      '.flv',
+      '.amr'
+    ].contains(extension)) {
+      return 'Audio';
+    } else if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.svg', '.ico', '.webp', '.heif', '.heic', '.raw']
+        .contains(extension)) {
+      return 'Image';
+    } else if (['.pdf'].contains(extension)) {
+      return 'PDF Document';
+    } else if (['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp', '.rtf', '.epub']
+        .contains(extension)) {
+      return 'Document';
+    } else if (['.zip', '.rar', '.tar', '.7z', '.gz', '.iso', '.tar.gz'].contains(extension)) {
+      return 'Compressed File';
+    } else if ([
+      '.mp4',
+      '.mkv',
+      '.avi',
+      '.mov',
+      '.wmv',
+      '.flv',
+      '.webm',
+      '.mpeg',
+      '.mpg',
+      '.3gp',
+      '.vob',
+      '.ogv',
+      '.rm',
+      '.ram',
+      '.m4v',
+      '.asf'
+    ].contains(extension)) {
+      return 'Video';
+    } else {
+      return 'Unknown Type';
+    }
+  }
+
+  deleteChat() async {
+    List<String> senderList = selectedChatMap.values.toList();
+    List<String> msgList = selectedChatMap.keys.toList();
+
+    if (senderList.contains(widget.userid)) {
+      if (mounted) {
+        showMessageBox(
+          "Deletion",
+          "Are you sure delete chats?",
+          context,
+          "Delete",
+          () {
+            deleteOwnChat(msgList);
+            Navigator.pop(context);
+          },
+        );
+      }
+    } else if (!senderList.contains(widget.userid)) {
+      if (mounted) {
+        showDeleteChatBox(
+          "Deletion",
+          "Are you sure to delete chats?",
+          context,
+          () {
+            deleteUserChat(msgList);
+            deleteOwnChat(msgList);
+            Navigator.pop(context);
+          },
+          () {
+            deleteOwnChat(msgList);
+            Navigator.pop(context);
+          },
+        );
+      }
+    }
+  }
+
+  deleteUserChat(msgList) async {
+    try {
+      for (var chatId in msgList) {
+        final chat = await firestore
+            .doc(widget.userid)
+            .collection("save_chat")
+            .doc(currentUserId)
+            .collection("messages")
+            .doc(chatId)
+            .get();
+        if (chat.exists) {
+          await firestore
+              .doc(widget.userid)
+              .collection("save_chat")
+              .doc(currentUserId)
+              .collection("messages")
+              .doc(chatId)
+              .delete();
+        }
+      }
+    } on FirebaseException catch (ex) {
+      showSnackBar(context, ex.toString());
+    }
+  }
+
+  deleteOwnChat(msgList) async {
+    try {
+      for (var chatId in msgList) {
+        final deleteChat = await firestore
+            .doc(currentUserId)
+            .collection("save_chat")
+            .doc(widget.userid)
+            .collection("messages")
+            .doc(chatId)
+            .get();
+        var ext = deleteChat.data()?["extension"];
+        Directory filepath = Directory('/storage/emulated/0/Download/QuickMessenger/Files/$chatId$ext');
+        File file = File(filepath.path);
+        if (ext != null && await file.exists()) {
+          await file.delete();
+          await firestore
+              .doc(currentUserId)
+              .collection("save_chat")
+              .doc(widget.userid)
+              .collection("messages")
+              .doc(chatId)
+              .delete();
+          showSnackBar(context, "Deleted $chatId$ext");
+        } else {
+          await firestore
+              .doc(currentUserId)
+              .collection("save_chat")
+              .doc(widget.userid)
+              .collection("messages")
+              .doc(chatId)
+              .delete();
+        }
+      }
+    } on FirebaseException catch (ex) {
+      showSnackBar(context, ex.toString());
+    }
+  }
+
+  void markMessageAsSeen(String messageId) async {
+    try {
+      var docSnap = await firestore
+          .doc(widget.userid)
+          .collection("save_chat")
+          .doc(currentUserId)
+          .collection("messages")
+          .doc(messageId)
+          .get();
+      if (docSnap.exists) {
+        final messageData = docSnap.data();
+        String currentState = messageData?["messagestate"];
+        if (currentState != "seen") {
+          await firestore
+              .doc(widget.userid)
+              .collection("save_chat")
+              .doc(currentUserId)
+              .collection("messages")
+              .doc(messageId)
+              .update({
+            "messagestate": "seen",
+          });
+        }
+      }
+    } catch (e) {
+      showSnackBar(context, "$e");
+    }
   }
 
   blockedByUserOrNot() async {
@@ -452,7 +634,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             children: [
               IconButton(
                   onPressed: () {
-                   Navigator.pop(context);
+                    Navigator.pop(context);
                   },
                   icon: Icon(Icons.arrow_back_ios_new)),
               InkWell(
@@ -595,14 +777,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             onTap: () {
                               blocked
                                   ? showMessageBox(
-                                      "Unblock", "Are you want to unblock ${widget.username}", context, "Unblock",
-                                      () {
+                                      "Unblock", "Are you want to unblock ${widget.username}", context, "Unblock", () {
                                       blockUser(widget.userid);
                                       Navigator.pop(context);
                                     })
                                   : showMessageBox(
-                                      "Block", "Are you sure to block ${widget.username}", context, "Block",
-                                      () async {
+                                      "Block", "Are you sure to block ${widget.username}", context, "Block", () async {
                                       blockUser(widget.userid);
                                       Navigator.pop(context);
                                     });
@@ -663,403 +843,406 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     );
                   }
 
-                  final messageList = snapshot.data!.docs.toList();
-                  if (selectedStates.length != messageList.length) {
-                    selectedStates = List.generate(
-                      messageList.length,
-                      (index) => false,
-                    );
-                  }
-                  int getSelectedStatesCount() {
-                    return selectedStates
-                        .where(
-                          (isSelected) => isSelected,
-                        )
-                        .length;
-                  }
+                  if (snapshot.hasData) {
+                    final messageList = snapshot.data!.docs.toList();
+                    if (selectedStates.length != messageList.length) {
+                      selectedStates = List.generate(
+                        messageList.length,
+                        (index) => false,
+                      );
+                    }
+                    int getSelectedStatesCount() {
+                      return selectedStates
+                          .where(
+                            (isSelected) => isSelected,
+                          )
+                          .length;
+                    }
 
-                  if (!selectedStates.contains(true)) scrollToBottom();
-                  return Column(
-                    children: [
-                      AnimatedContainer(
-                        curve: Curves.easeInOut,
-                        height: selectedStates.contains(true) ? 50 : 0,
-                        duration: Duration(milliseconds: 200),
-                        child: AppBar(
-                          leading: IconButton(
-                              tooltip: "Cancel",
-                              onPressed: () {
-                                setState(() {
-                                  selectedStates = List.generate(
-                                    messageList.length,
-                                    (index) {
-                                      return false;
-                                    },
-                                  );
-                                });
-                              },
-                              icon: Icon(
-                                Icons.cancel,
-                                color: Colors.blue,
-                              )),
-                          title: Text(
-                            "${getSelectedStatesCount()} selected",
-                            style: TextStyle(fontSize: 20),
-                          ),
-                          actions: [
-                            IconButton(
-                                tooltip: "Delete Selected Chats",
+                    if (!selectedStates.contains(true)) scrollToBottom();
+                    return Column(
+                      children: [
+                        AnimatedContainer(
+                          curve: Curves.easeInOut,
+                          height: selectedStates.contains(true) ? 50 : 0,
+                          duration: Duration(milliseconds: 200),
+                          child: AppBar(
+                            leading: IconButton(
+                                tooltip: "Cancel",
                                 onPressed: () {
-                                  deleteChat(mounted, widget.userid, context, selectedChatMap);
+                                  setState(() {
+                                    selectedStates = List.generate(
+                                      messageList.length,
+                                      (index) {
+                                        return false;
+                                      },
+                                    );
+                                  });
                                 },
                                 icon: Icon(
-                                  Icons.remove_circle,
-                                  color: Colors.red,
-                                  size: 25,
-                                ))
-                          ],
+                                  Icons.cancel,
+                                  color: Colors.blue,
+                                )),
+                            title: Text(
+                              "${getSelectedStatesCount()} selected",
+                              style: TextStyle(fontSize: 20),
+                            ),
+                            actions: [
+                              IconButton(
+                                  tooltip: "Delete Selected Chats",
+                                  onPressed: () {
+                                    deleteChat();
+                                  },
+                                  icon: Icon(
+                                    Icons.remove_circle,
+                                    color: Colors.red,
+                                    size: 25,
+                                  ))
+                            ],
+                          ),
                         ),
-                      ),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          shrinkWrap: true,
-                          itemCount: messageList.length,
-                          itemBuilder: (context, index) {
-                            final messageData = messageList[index];
-                            final messageId = messageList[index].id;
-                            final txtMessage = messageData["message"];
-                            var senderId = messageData["sender"];
-                            final timestamp = messageData["time"];
-                            final messageState = messageData["messagestate"];
-                            final formatedTime = DateFormat("hh:mm a").format(timestamp.toDate());
-                            final inkwell = GlobalKey();
+                        Expanded(
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            shrinkWrap: true,
+                            itemCount: messageList.length,
+                            itemBuilder: (context, index) {
+                              final messageData = messageList[index];
+                              final messageId = messageList[index].id;
+                              final txtMessage = messageData["message"];
+                              var senderId = messageData["sender"];
+                              final timestamp = messageData["time"];
+                              final messageState = messageData["messagestate"];
+                              final formatedTime = DateFormat("hh:mm a").format(timestamp.toDate());
+                              final inkwell = GlobalKey();
 
-                            if (selectedStates[index] == true) {
-                              if (!selectedChatMap.containsKey(messageId)) {
-                                selectedChatMap[messageId.toString()] = senderId.toString();
+                              if (selectedStates[index] == true) {
+                                if (!selectedChatMap.containsKey(messageId)) {
+                                  selectedChatMap[messageId.toString()] = senderId.toString();
+                                }
+                              } else if (selectedStates[index] == false) {
+                                if (selectedChatMap.containsKey(messageId)) {
+                                  selectedChatMap.remove(messageId);
+                                }
                               }
-                            } else if (selectedStates[index] == false) {
-                              if (selectedChatMap.containsKey(messageId)) {
-                                selectedChatMap.remove(messageId);
-                              }
-                            }
 
-                            if (txtMessage == userid && senderId == userid) {
-                              final fileType = messageData["filetype"];
-                              final extension = messageData["extension"];
+                              if (txtMessage == userid && senderId == userid) {
+                                final fileType = messageData["filetype"];
+                                final extension = messageData["extension"];
 
-                              final id = messageData.id;
-                              Directory filepath =
-                                  Directory('/storage/emulated/0/Download/QuickMessenger/Files/$id$extension');
+                                final id = messageData.id;
+                                Directory filepath =
+                                    Directory('/storage/emulated/0/Download/QuickMessenger/Files/$id$extension');
 
-                              File image = File(filepath.path);
-                              return InkWell(
-                                key: inkwell,
-                                onLongPress: () {
-                                  setState(() {
-                                    selectedStates[index] = !selectedStates[index];
-                                  });
-                                },
-                                onTap: () async {
-                                  if (selectedStates.contains(true)) {
+                                File image = File(filepath.path);
+                                return InkWell(
+                                  key: inkwell,
+                                  onLongPress: () {
                                     setState(() {
                                       selectedStates[index] = !selectedStates[index];
                                     });
-                                  } else {
-                                    final renderbox = inkwell.currentContext?.findRenderObject() as RenderBox;
-                                    final position = renderbox.localToGlobal(Offset.zero);
+                                  },
+                                  onTap: () async {
+                                    if (selectedStates.contains(true)) {
+                                      setState(() {
+                                        selectedStates[index] = !selectedStates[index];
+                                      });
+                                    } else {
+                                      final renderbox = inkwell.currentContext?.findRenderObject() as RenderBox;
+                                      final position = renderbox.localToGlobal(Offset.zero);
 
-                                    showMenu(
-                                      color: Colors.white,
-                                      elevation: 10,
-                                      shadowColor: Colors.black54,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                      context: context,
-                                      position: RelativeRect.fromLTRB(
-                                          position.dx + 200, position.dy + 30, position.dx + 400, position.dy + 100),
-                                      items: [
-                                        PopupMenuItem<String>(
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.folder_open_outlined,
-                                                size: 20,
-                                              ),
-                                              SizedBox(
-                                                width: 5,
-                                              ),
-                                              const Text('Open'),
-                                            ],
-                                          ),
-                                          onTap: () async {
-                                            try {
-                                              if (fileType == "Image") {
-                                                await OpenFile.open(
-                                                  filepath.path,
-                                                );
-                                              } else {
-                                                if (fileType == "Compressed File") {
-                                                  showSnackBar(
-                                                      context, "Go to Downloads In App folder for Compressed Files.");
-                                                }
-                                                await OpenFile.open(
-                                                  filepath.path,
-                                                );
-                                              }
-                                            } catch (e) {
-                                              //
-                                            }
-                                          },
-                                        ),
-                                      ],
-                                    );
-                                  }
-                                },
-                                child: Container(
-                                  color: selectedStates[index] ? Colors.blue.shade100 : Colors.transparent,
-                                  child: SendMedia(
-                                    fileType: fileType,
-                                    filename: "$id$extension",
-                                    iconData: iconList[fileType],
-                                    time: formatedTime,
-                                    messageState: messageState,
-                                    fileImage: image,
-                                  ),
-                                ),
-                              );
-                            } else if (txtMessage == widget.userid && senderId == widget.userid) {
-                              markMessageAsSeen(messageId, widget.userid, context);
-                              final fileType = messageData["filetype"];
-                              final extension = messageData["extension"];
-                              final fileUrl = messageData["fileurl"];
-                              final id = messageData.id;
-                              Directory filepath =
-                                  Directory('/storage/emulated/0/Download/QuickMessenger/Files/$id$extension');
-                              File file = File(filepath.path);
-                              return InkWell(
-                                key: inkwell,
-                                onLongPress: () {
-                                  setState(() {
-                                    selectedStates[index] = !selectedStates[index];
-                                  });
-                                },
-                                onTap: () {
-                                  if (selectedStates.contains(true)) {
-                                    setState(() {
-                                      selectedStates[index] = !selectedStates[index];
-                                    });
-                                  } else {}
-                                },
-                                child: Container(
-                                  color: selectedStates[index] ? Colors.blue.shade100 : Colors.transparent,
-                                  child: Receivemedia(
-                                    file: file,
-                                    senderId: widget.userid,
-                                    fileurl: fileUrl,
-                                    fileType: fileType,
-                                    filename: "$id$extension",
-                                    iconData: iconList[fileType],
-                                    time: formatedTime,
-                                  ),
-                                ),
-                              );
-                            }
-
-                            if (senderId == userid && txtMessage != userid) {
-                              return InkWell(
-                                onLongPress: () {
-                                  setState(() {
-                                    selectedStates[index] = !selectedStates[index];
-                                  });
-                                },
-                                onTap: () {
-                                  if (selectedStates.contains(true)) {
-                                    setState(() {
-                                      selectedStates[index] = !selectedStates[index];
-                                    });
-                                  }
-                                },
-                                child: Container(
-                                  color: selectedStates[index] ? Colors.blue.shade100 : Colors.transparent,
-                                  child: Sendcard(
-                                    messageState: messageState,
-                                    time: formatedTime,
-                                    message: txtMessage,
-                                  ),
-                                ),
-                              );
-                            } else if (senderId == widget.userid && txtMessage != widget.userid) {
-                              markMessageAsSeen(messageData.id, widget.userid, context);
-
-                              return InkWell(
-                                onLongPress: () {
-                                  setState(() {
-                                    selectedStates[index] = !selectedStates[index];
-                                  });
-                                },
-                                onTap: () {
-                                  if (selectedStates.contains(true)) {
-                                    setState(() {
-                                      selectedStates[index] = !selectedStates[index];
-                                    });
-                                  }
-                                },
-                                child: Container(
-                                  color: selectedStates[index] ? Colors.blue.shade100 : Colors.transparent,
-                                  child: Receivecard(
-                                    time: formatedTime,
-                                    message: txtMessage,
-                                  ),
-                                ),
-                              );
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                      loading
-                          ? Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            )
-                          : Center(),
-                      pickedFiles.isNotEmpty || pickedImage != null || pickedImages.isNotEmpty
-                          ? Container(
-                              height: 100,
-                              width: 400,
-                              color: Colors.transparent,
-                              child: Card(
-                                elevation: 5,
-                                color: Colors.grey.shade100,
-                                child: Stack(
-                                  children: [
-                                    pickedFiles.isNotEmpty
-                                        ? Container(
-                                            height: MediaQuery.of(context).size.height,
-                                            width: MediaQuery.of(context).size.height,
-                                            color: Colors.transparent,
-                                            child: ListView.builder(
-                                              itemCount: pickedFiles.length,
-                                              itemBuilder: (context, index) {
-                                                final filename = pickedFiles[index].name;
-                                                String fileType = getFileType(".${pickedFiles[index].extension}");
-
-                                                return Column(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    ListTile(
-                                                      leading: Icon(
-                                                        iconList[fileType],
-                                                        size: 35,
-                                                      ),
-                                                      title: Text(filename),
-                                                    ),
-                                                    pickedFiles.last == pickedFiles[index]
-                                                        ? Text("")
-                                                        : Padding(
-                                                            padding: const EdgeInsets.only(left: 20, right: 120),
-                                                            child: Divider(),
-                                                          )
-                                                  ],
-                                                );
-                                              },
-                                            ),
-                                          )
-                                        : SizedBox(),
-                                    pickedImage != null
-                                        ? Positioned(
-                                            top: 10,
-                                            bottom: 10,
-                                            left: 100,
-                                            right: 120,
-                                            child: Text(
-                                              pickedImage!.path.toString().replaceRange(0, 40, ""),
-                                              style: TextStyle(
-                                                color: Colors.black,
-                                              ),
-                                            ))
-                                        : Text(""),
-                                    pickedImage != null
-                                        ? Positioned(
-                                            top: 10,
-                                            bottom: 10,
-                                            left: 10,
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(10),
-                                              child: CircleAvatar(
-                                                radius: 36,
-                                                child: Image.file(
-                                                  fit: BoxFit.cover,
-                                                  height: 100,
-                                                  File(pickedImage!.path),
-                                                  width: 100,
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                        : pickedImages.isNotEmpty
-                                            ? Container(
-                                                height: MediaQuery.of(context).size.height,
-                                                width: MediaQuery.of(context).size.height,
-                                                color: Colors.transparent,
-                                                child: ListView.builder(
-                                                  itemCount: pickedImages.length,
-                                                  itemBuilder: (context, index) {
-                                                    return Padding(
-                                                      padding: EdgeInsets.only(top: 8.0, right: 40.0, bottom: 8.0),
-                                                      child: ListTile(
-                                                        leading: ClipRRect(
-                                                            borderRadius: BorderRadius.circular(10),
-                                                            child: Image.file(
-                                                                fit: BoxFit.cover, File(pickedImages[index]!.path))),
-                                                        title: Text(pickedImages[index]!.name),
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                              )
-                                            : SizedBox(),
-                                    Positioned(
-                                      right: 10,
-                                      top: 20,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(top: 5),
-                                        child: IconButton.outlined(
-                                            onPressed: () {
-                                              setState(() {
-                                                pickedImage = null;
-                                                pickedImages.clear();
-                                                pickedFiles.clear();
-                                              });
-                                            },
-                                            icon: Row(
+                                      showMenu(
+                                        color: Colors.white,
+                                        elevation: 10,
+                                        shadowColor: Colors.black54,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                        context: context,
+                                        position: RelativeRect.fromLTRB(
+                                            position.dx + 200, position.dy + 30, position.dx + 400, position.dy + 100),
+                                        items: [
+                                          PopupMenuItem<String>(
+                                            child: Row(
                                               children: [
                                                 Icon(
-                                                  Icons.highlight_remove_outlined,
+                                                  Icons.folder_open_outlined,
                                                   size: 20,
+                                                ),
+                                                SizedBox(
+                                                  width: 5,
+                                                ),
+                                                const Text('Open'),
+                                              ],
+                                            ),
+                                            onTap: () async {
+                                              try {
+                                                if (fileType == "Image") {
+                                                  await OpenFile.open(
+                                                    filepath.path,
+                                                  );
+                                                } else {
+                                                  if (fileType == "Compressed File") {
+                                                    showSnackBar(
+                                                        context, "Go to Downloads In App folder for Compressed Files.");
+                                                  }
+                                                  await OpenFile.open(
+                                                    filepath.path,
+                                                  );
+                                                }
+                                              } catch (e) {
+                                                //
+                                              }
+                                            },
+                                          ),
+                                        ],
+                                      );
+                                    }
+                                  },
+                                  child: Container(
+                                    color: selectedStates[index] ? Colors.blue.shade100 : Colors.transparent,
+                                    child: SendMedia(
+                                      fileType: fileType,
+                                      filename: "$id$extension",
+                                      iconData: iconList[fileType],
+                                      time: formatedTime,
+                                      messageState: messageState,
+                                      fileImage: image,
+                                    ),
+                                  ),
+                                );
+                              } else if (txtMessage == widget.userid && senderId == widget.userid) {
+                                markMessageAsSeen(messageId);
+                                final fileType = messageData["filetype"];
+                                final extension = messageData["extension"];
+                                final fileUrl = messageData["fileurl"];
+                                final id = messageData.id;
+                                Directory filepath =
+                                    Directory('/storage/emulated/0/Download/QuickMessenger/Files/$id$extension');
+                                File file = File(filepath.path);
+                                return InkWell(
+                                  key: inkwell,
+                                  onLongPress: () {
+                                    setState(() {
+                                      selectedStates[index] = !selectedStates[index];
+                                    });
+                                  },
+                                  onTap: () {
+                                    if (selectedStates.contains(true)) {
+                                      setState(() {
+                                        selectedStates[index] = !selectedStates[index];
+                                      });
+                                    } else {}
+                                  },
+                                  child: Container(
+                                    color: selectedStates[index] ? Colors.blue.shade100 : Colors.transparent,
+                                    child: Receivemedia(
+                                      file: file,
+                                      senderId: widget.userid,
+                                      fileurl: fileUrl,
+                                      fileType: fileType,
+                                      filename: "$id$extension",
+                                      iconData: iconList[fileType],
+                                      time: formatedTime,
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              if (senderId == userid && txtMessage != userid) {
+                                return InkWell(
+                                  onLongPress: () {
+                                    setState(() {
+                                      selectedStates[index] = !selectedStates[index];
+                                    });
+                                  },
+                                  onTap: () {
+                                    if (selectedStates.contains(true)) {
+                                      setState(() {
+                                        selectedStates[index] = !selectedStates[index];
+                                      });
+                                    }
+                                  },
+                                  child: Container(
+                                    color: selectedStates[index] ? Colors.blue.shade100 : Colors.transparent,
+                                    child: Sendcard(
+                                      messageState: messageState,
+                                      time: formatedTime,
+                                      message: txtMessage,
+                                    ),
+                                  ),
+                                );
+                              } else if (senderId == widget.userid && txtMessage != widget.userid) {
+                                markMessageAsSeen(messageData.id);
+
+                                return InkWell(
+                                  onLongPress: () {
+                                    setState(() {
+                                      selectedStates[index] = !selectedStates[index];
+                                    });
+                                  },
+                                  onTap: () {
+                                    if (selectedStates.contains(true)) {
+                                      setState(() {
+                                        selectedStates[index] = !selectedStates[index];
+                                      });
+                                    }
+                                  },
+                                  child: Container(
+                                    color: selectedStates[index] ? Colors.blue.shade100 : Colors.transparent,
+                                    child: Receivecard(
+                                      time: formatedTime,
+                                      message: txtMessage,
+                                    ),
+                                  ),
+                                );
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        loading
+                            ? Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                            : Center(),
+                        pickedFiles.isNotEmpty || pickedImage != null || pickedImages.isNotEmpty
+                            ? Container(
+                                height: 100,
+                                width: 400,
+                                color: Colors.transparent,
+                                child: Card(
+                                  elevation: 5,
+                                  color: Colors.grey.shade100,
+                                  child: Stack(
+                                    children: [
+                                      pickedFiles.isNotEmpty
+                                          ? Container(
+                                              height: MediaQuery.of(context).size.height,
+                                              width: MediaQuery.of(context).size.height,
+                                              color: Colors.transparent,
+                                              child: ListView.builder(
+                                                itemCount: pickedFiles.length,
+                                                itemBuilder: (context, index) {
+                                                  final filename = pickedFiles[index].name;
+                                                  String fileType = getFileType(".${pickedFiles[index].extension}");
+
+                                                  return Column(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      ListTile(
+                                                        leading: Icon(
+                                                          iconList[fileType],
+                                                          size: 35,
+                                                        ),
+                                                        title: Text(filename),
+                                                      ),
+                                                      pickedFiles.last == pickedFiles[index]
+                                                          ? Text("")
+                                                          : Padding(
+                                                              padding: const EdgeInsets.only(left: 20, right: 120),
+                                                              child: Divider(),
+                                                            )
+                                                    ],
+                                                  );
+                                                },
+                                              ),
+                                            )
+                                          : SizedBox(),
+                                      pickedImage != null
+                                          ? Positioned(
+                                              top: 10,
+                                              bottom: 10,
+                                              left: 100,
+                                              right: 120,
+                                              child: Text(
+                                                pickedImage!.path.toString().replaceRange(0, 40, ""),
+                                                style: TextStyle(
                                                   color: Colors.black,
                                                 ),
-                                                Padding(
-                                                  padding: const EdgeInsets.only(left: 8.0, right: 5),
-                                                  child: Text(
-                                                    "Cancel",
-                                                    style: TextStyle(color: Colors.black),
+                                              ))
+                                          : Text(""),
+                                      pickedImage != null
+                                          ? Positioned(
+                                              top: 10,
+                                              bottom: 10,
+                                              left: 10,
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(10),
+                                                child: CircleAvatar(
+                                                  radius: 36,
+                                                  child: Image.file(
+                                                    fit: BoxFit.cover,
+                                                    height: 100,
+                                                    File(pickedImage!.path),
+                                                    width: 100,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                          : pickedImages.isNotEmpty
+                                              ? Container(
+                                                  height: MediaQuery.of(context).size.height,
+                                                  width: MediaQuery.of(context).size.height,
+                                                  color: Colors.transparent,
+                                                  child: ListView.builder(
+                                                    itemCount: pickedImages.length,
+                                                    itemBuilder: (context, index) {
+                                                      return Padding(
+                                                        padding: EdgeInsets.only(top: 8.0, right: 40.0, bottom: 8.0),
+                                                        child: ListTile(
+                                                          leading: ClipRRect(
+                                                              borderRadius: BorderRadius.circular(10),
+                                                              child: Image.file(
+                                                                  fit: BoxFit.cover, File(pickedImages[index]!.path))),
+                                                          title: Text(pickedImages[index]!.name),
+                                                        ),
+                                                      );
+                                                    },
                                                   ),
                                                 )
-                                              ],
-                                            )),
-                                      ),
-                                    )
-                                  ],
+                                              : SizedBox(),
+                                      Positioned(
+                                        right: 10,
+                                        top: 20,
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(top: 5),
+                                          child: IconButton.outlined(
+                                              onPressed: () {
+                                                setState(() {
+                                                  pickedImage = null;
+                                                  pickedImages.clear();
+                                                  pickedFiles.clear();
+                                                });
+                                              },
+                                              icon: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.highlight_remove_outlined,
+                                                    size: 20,
+                                                    color: Colors.black,
+                                                  ),
+                                                  Padding(
+                                                    padding: const EdgeInsets.only(left: 8.0, right: 5),
+                                                    child: Text(
+                                                      "Cancel",
+                                                      style: TextStyle(color: Colors.black),
+                                                    ),
+                                                  )
+                                                ],
+                                              )),
+                                        ),
+                                      )
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            )
-                          : SizedBox(),
-                    ],
-                  );
+                              )
+                            : SizedBox(),
+                      ],
+                    );
+                  }
+                  return Center();
                 }),
           ),
           Container(

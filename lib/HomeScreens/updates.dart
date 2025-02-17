@@ -139,79 +139,105 @@ class _UpdatesState extends State<Updates> {
                             if (!uSnapshot.hasData && uSnapshot.data!.data()!.isEmpty) {}
                             final userData = uSnapshot.data!.data();
 
-                            return ListTile(
-                                leading: ClipOval(
-                                  child: CircleAvatar(
-                                    backgroundImage: NetworkImage(userData?["userimageurl"]),
+                            return InkWell(
+                             onTap: () {
+                               Navigator.push(
+                                 context,
+                                 PageRouteBuilder(
+                                   pageBuilder: (context, animation, secondaryAnimation) => SearchUserProfile(
+                                       username: userData?["username"],
+                                       email: userData?["email"],
+                                       about: userData?["about"],
+                                       imageurl: userData?["userimageurl"],
+                                       userid: userData?["userid"]),
+                                   // The page to navigate to
+                                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                     const begin = Offset(2.0, 1.0);
+                                     const end = Offset.zero;
+                                     var tween = Tween(begin: begin, end: end);
+                                     final offsetAnimation = animation.drive(tween);
+                                     return SlideTransition(
+                                       position: offsetAnimation,
+                                       child: child,
+                                     );
+                                   },
+                                 ),
+                               );
+                             },
+                              child: ListTile(
+                                  leading: ClipOval(
+                                    child: CircleAvatar(
+                                      backgroundImage: NetworkImage(userData?["userimageurl"]),
+                                    ),
                                   ),
-                                ),
-                                title: Text(
-                                  "${userData?["username"]}",
-                                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                                ),
-                                subtitle: Text(
-                                  "is requested for follow you.",
-                                  style: TextStyle(
-                                    color: Colors.black,
+                                  title: Text(
+                                    "${userData?["username"]}",
+                                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
                                   ),
-                                ),
-                                trailing: SizedBox(
-                                  height: 50,
-                                  width: 109,
-                                  child: StreamBuilder(
-                                      stream: FirebaseFirestore.instance
-                                          .collection("Users")
-                                          .doc(currentUserId)
-                                          .collection("followers")
-                                          .doc(update.id)
-                                          .snapshots(),
-                                      builder: (context, fSnapshot) {
-                                        if (fSnapshot.connectionState == ConnectionState.waiting) {
-                                          return Center(child: CircularProgressIndicator());
-                                        }
-                                        if (!fSnapshot.data!.exists || fSnapshot.data!.exists) {
-                                          return fSnapshot.data!.exists && fSnapshot.data?["follower"] == true
-                                              ? Center(
-                                                  child: Text(
-                                                    "Accepted",
-                                                    style: TextStyle(fontSize: 15, color: Colors.blue),
-                                                  ),
-                                                )
-                                              : Elvb(
-                                                  onpressed: () {
-                                                    if (!fSnapshot.data!.exists ||
-                                                        fSnapshot.data!.exists &&
-                                                            fSnapshot.data?["follower"] == false) {
-                                                      showMessageBox(
-                                                          "User Request",
-                                                          "Are you sure want to accept ${userData?["username"]}'s request? ",
-                                                          context,
-                                                          "Confirm", () async {
-                                                        await FirebaseFirestore.instance
-                                                            .collection("Users")
-                                                            .doc(currentUserId)
-                                                            .collection("followers")
-                                                            .doc(update.id)
-                                                            .set({"follower": true});
+                                  subtitle: Text(
+                                    "is requested for follow you.",
+                                    style: TextStyle(
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                  trailing: SizedBox(
+                                    height: 50,
+                                    width: 109,
+                                    child: StreamBuilder(
+                                        stream: FirebaseFirestore.instance
+                                            .collection("Users")
+                                            .doc(currentUserId)
+                                            .collection("followers")
+                                            .doc(update.id)
+                                            .snapshots(),
+                                        builder: (context, fSnapshot) {
+                                          if (fSnapshot.connectionState == ConnectionState.waiting) {
+                                            return Center(child: CircularProgressIndicator());
+                                          }
+                                          if (!fSnapshot.data!.exists || fSnapshot.data!.exists) {
+                                            return fSnapshot.data!.exists && fSnapshot.data?["follower"] == true
+                                                ? Center(
+                                                    child: Text(
+                                                      "Accepted",
+                                                      style: TextStyle(fontSize: 15, color: Colors.blue),
+                                                    ),
+                                                  )
+                                                : Elvb(
+                                                    onpressed: () {
+                                                      if (!fSnapshot.data!.exists ||
+                                                          fSnapshot.data!.exists &&
+                                                              fSnapshot.data?["follower"] == false) {
+                                                        showMessageBox(
+                                                            "User Request",
+                                                            "Are you sure want to accept ${userData?["username"]}'s request? ",
+                                                            context,
+                                                            "Confirm", () async {
+                                                          await FirebaseFirestore.instance
+                                                              .collection("Users")
+                                                              .doc(currentUserId)
+                                                              .collection("followers")
+                                                              .doc(update.id)
+                                                              .set({"follower": true});
 
-                                                        await FirebaseFirestore.instance
-                                                            .collection("Users")
-                                                            .doc(update.id)
-                                                            .collection("following")
-                                                            .doc(currentUserId)
-                                                            .set({"following": true});
-                                                        Navigator.pop(context);
-                                                      });
-                                                    } else if (fSnapshot.data!.exists &&
-                                                        fSnapshot.data?["follower"] == true) {}
-                                                  },
-                                                  name: "Accept",
-                                                  foregroundcolor: Colors.white,
-                                                  backgroundcolor: Colors.blue);
-                                        }
-                                        return Center();
-                                      }),
-                                ));
+                                                          await FirebaseFirestore.instance
+                                                              .collection("Users")
+                                                              .doc(update.id)
+                                                              .collection("following")
+                                                              .doc(currentUserId)
+                                                              .set({"following": true});
+                                                          Navigator.pop(context);
+                                                        });
+                                                      } else if (fSnapshot.data!.exists &&
+                                                          fSnapshot.data?["follower"] == true) {}
+                                                    },
+                                                    name: "Accept",
+                                                    foregroundcolor: Colors.white,
+                                                    backgroundcolor: Colors.blue);
+                                          }
+                                          return Center();
+                                        }),
+                                  )),
+                            );
                           });
                     },
                   );

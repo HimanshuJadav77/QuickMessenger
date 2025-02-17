@@ -27,7 +27,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool index = false;
   GlobalKey<ScaffoldState> drawerController = GlobalKey<ScaffoldState>();
   final _firestore = FirebaseFirestore.instance;
-  final cUserid = FirebaseAuth.instance.currentUser!.uid;
   bool disabled = false;
 
   @override
@@ -149,13 +148,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   ]),
                                 ),
                                 child: StreamBuilder(
-                                    stream: _firestore.collection("Users").doc(cUserid).snapshots(),
+                                    stream: _firestore.collection("Users").doc(currentUserId).snapshots(),
                                     builder: (context, snapshot) {
-                                      if (snapshot.connectionState == ConnectionState.waiting) {
-                                        return Center(
-                                          child: CircularProgressIndicator(),
-                                        );
-                                      }
                                       final data = snapshot.data!;
                                       final imageurl = data["userimageurl"];
                                       final username = data["username"];
@@ -237,7 +231,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     context,
                                     PageRouteBuilder(
                                       pageBuilder: (context, animation, secondaryAnimation) => SettingsPage(),
-                                      // The page to navigate to
                                       transitionsBuilder: (context, animation, secondaryAnimation, child) {
                                         const begin = Offset(3.0, 1.0);
                                         const end = Offset.zero;
