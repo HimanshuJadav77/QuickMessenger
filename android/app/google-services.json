@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "85470283732",
+    "project_id": "it-material-point-2b732",
+    "storage_bucket": "it-material-point-2b732.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:85470283732:android:a0bfef78f45b9dfb6e7841",
+        "android_client_info": {
+          "package_name": "com.example.it_material_point"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "85470283732-bjr456hcaccp6v59foq5lr9ab8hjmpap.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.it_material_point",
+            "certificate_hash": "eeaafb021d672391deaaece0011c60dde8ad7336"
+          }
+        },
+        {
+          "client_id": "85470283732-h8m9kmnclgovhmvnana691eh8p3ekl5g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDU7-ZtGb3AMynKUCeeO9rJGtSZ3bQ-gSE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "85470283732-h8m9kmnclgovhmvnana691eh8p3ekl5g.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "85470283732-so92gmlo9ve8ttdjmogrekdu7rj8smtn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.itMaterialPoint"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:85470283732:android:cccab8536cb8cdbe6e7841",
+        "android_client_info": {
+          "package_name": "com.example.quickmsg"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "85470283732-h8m9kmnclgovhmvnana691eh8p3ekl5g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDU7-ZtGb3AMynKUCeeO9rJGtSZ3bQ-gSE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "85470283732-h8m9kmnclgovhmvnana691eh8p3ekl5g.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "85470283732-so92gmlo9ve8ttdjmogrekdu7rj8smtn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.itMaterialPoint"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
