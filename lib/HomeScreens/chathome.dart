@@ -82,6 +82,12 @@ class _ChatHomeState extends State<ChatHome> {
                   .length;
             }
 
+            messageCount = List.generate(
+              users.length,
+              (index) {
+                return 0;
+              },
+            );
             return Scaffold(
               body: Column(
                 children: [
@@ -127,12 +133,7 @@ class _ChatHomeState extends State<ChatHome> {
                       itemCount: users.length,
                       itemBuilder: (context, index) {
                         final DocumentSnapshot user = users[index];
-                        messageCount = List.generate(
-                          users.length,
-                          (index) {
-                            return 0;
-                          },
-                        );
+
                         if (selectedStates[index] == true) {
                           if (!selectedUserList.contains(user.id)) {
                             selectedUserList.add(user.id);
@@ -188,34 +189,6 @@ class _ChatHomeState extends State<ChatHome> {
                                         },
                                         child: Stack(
                                           children: [
-                                            StreamBuilder(
-                                                stream: FirebaseFirestore.instance
-                                                    .collection("Users")
-                                                    .doc(userData["userid"])
-                                                    .collection("save_chat")
-                                                    .doc(currentUserId)
-                                                    .collection("messages")
-                                                    .orderBy("time")
-                                                    .snapshots(),
-                                                builder: (context, snapshot) {
-                                                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                                                    return Center();
-                                                  }
-                                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                                    return Center();
-                                                  }
-
-                                                  final data = snapshot.data!.docs.toList();
-
-                                                  messageCount[index] = data.where(
-                                                    (message) {
-                                                      return message["sender"] == userData["userid"] &&
-                                                          message["messagestate"] == "send";
-                                                    },
-                                                  ).length;
-
-                                                  return SizedBox();
-                                                }),
                                             CustomCard(
                                               subtitle: StreamBuilder(
                                                   stream: FirebaseFirestore.instance
@@ -226,29 +199,56 @@ class _ChatHomeState extends State<ChatHome> {
                                                       .collection("messages")
                                                       .orderBy("time")
                                                       .snapshots(),
-                                                  builder: (context, snapshot) {
-                                                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                                                  builder: (context, messagesnapshot) {
+                                                    if (messagesnapshot.connectionState == ConnectionState.waiting) {
                                                       return Center();
                                                     }
-                                                    if (snapshot.connectionState == ConnectionState.waiting) {}
+                                                    if (!messagesnapshot.hasData ||
+                                                        messagesnapshot.data!.docs.isEmpty) {
+                                                      return Center();
+                                                    }
                                                     if (snapshot.hasData) {
-                                                      final data = snapshot.data!.docs.toList();
-                                                      final message = data.last.data()["message"];
-                                                      var senderId = data.last.data()["sender"];
+                                                      return StreamBuilder(
+                                                          stream: FirebaseFirestore.instance
+                                                              .collection("Users")
+                                                              .doc(userData["userid"])
+                                                              .collection("save_chat")
+                                                              .doc(currentUserId)
+                                                              .collection("messages")
+                                                              .orderBy("time")
+                                                              .snapshots(),
+                                                          builder: (context, countSnapshot) {
+                                                            if (countSnapshot.hasData) {
+                                                              final data = countSnapshot.data!.docs.toList();
 
-                                                      if (messageCount[index] == 0) {
-                                                        if (message == currentUserId || message == userData["userid"]) {
-                                                          final filename = data.last.id + data.last.data()["extension"];
-                                                          return Text(filename);
-                                                        } else if (senderId == currentUserId ||
-                                                            senderId == userData["userid"]) {
-                                                          return Text(message);
-                                                        }
-                                                      } else if (messageCount[index] == 1) {
-                                                        return Text("1 new message");
-                                                      } else if (messageCount[index] > 1) {
-                                                        return Text("${messageCount[index]} new messages");
-                                                      }
+                                                              messageCount[index] = data.where(
+                                                                (message) {
+                                                                  return message["sender"] == userData["userid"] &&
+                                                                      message["messagestate"] == "send";
+                                                                },
+                                                              ).length;
+                                                            }
+                                                            final data = messagesnapshot.data!.docs.toList();
+                                                            final message = data.last.data()["message"];
+                                                            var senderId = data.last.data()["sender"];
+
+                                                            if (messageCount[index] == 0) {
+                                                              if (message == currentUserId ||
+                                                                  message == userData["userid"]) {
+                                                                final filename =
+                                                                    data.last.id + data.last.data()["extension"];
+                                                                return Text(filename);
+                                                              } else if (senderId == currentUserId ||
+                                                                  senderId == userData["userid"]) {
+                                                                return Text(message);
+                                                              }
+                                                            } else if (messageCount[index] == 1) {
+                                                              return Text("1 new message");
+                                                            } else if (messageCount[index] > 1) {
+                                                              return Text("${messageCount[index]} new messages");
+                                                            }
+                                                            return SizedBox();
+                                                          });
                                                     }
 
                                                     return Center();
@@ -299,7 +299,7 @@ class _ChatHomeState extends State<ChatHome> {
                                   ],
                                 );
                               }
-                              return SizedBox.shrink();
+                              return Center();
                             });
                       },
                     ),
