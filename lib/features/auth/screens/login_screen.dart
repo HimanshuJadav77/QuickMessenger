@@ -1,12 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/HomeScreens/home.dart';
-import 'package:QuickMessenger/Logins/forgotpass.dart';
-import 'package:QuickMessenger/Logins/register.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
-import 'package:QuickMessenger/networkcheck.dart';
-import '../Ui/elvb.dart';
-import '../Ui/snackbar.dart';
+import 'package:QuickMessenger/features/chat/screens/main_navigation_screen.dart';
+import 'package:QuickMessenger/features/auth/screens/forgot_pass_screen.dart';
+import 'package:QuickMessenger/features/auth/screens/register_screen.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:QuickMessenger/core/utils/networkcheck.dart';
+import '../../../core/widgets/elvb.dart';
+import '../../../core/widgets/app_snackbar.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});

@@ -1,11 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/HomeScreens/chatscreen.dart';
-import 'package:QuickMessenger/HomeScreens/searchuser.dart';
-import 'package:QuickMessenger/Ui/customcard.dart';
-import 'package:QuickMessenger/Ui/elvb.dart';
+import 'package:QuickMessenger/features/chat/screens/chat_screen.dart';
+import 'package:QuickMessenger/features/chat/screens/user_search_screen.dart';
+import 'package:QuickMessenger/core/widgets/custom_card.dart';
+import 'package:QuickMessenger/core/widgets/elvb.dart';
 
-import 'home.dart';
+import 'main_navigation_screen.dart';
 
 class FollowedChatList extends StatefulWidget {
   const FollowedChatList({super.key});

@@ -7,20 +7,19 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
-import 'package:QuickMessenger/HomeScreens/Profile/seachuserprofile.dart';
-import 'package:QuickMessenger/HomeScreens/home.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
-import 'package:QuickMessenger/Ui/receivecard.dart';
-import 'package:QuickMessenger/Ui/receivemedia.dart';
-import 'package:QuickMessenger/Ui/sendmedia.dart';
-import 'package:QuickMessenger/Ui/snackbar.dart';
-import 'package:QuickMessenger/networkcheck.dart';
-import '../Ui/sendcard.dart';
+import 'package:QuickMessenger/features/profile/screens/user_profile_screen.dart';
+import 'package:QuickMessenger/features/chat/screens/main_navigation_screen.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:QuickMessenger/features/chat/widgets/receiver_message_card.dart';
+import 'package:QuickMessenger/core/widgets/receiver_media_card.dart';
+import 'package:QuickMessenger/core/widgets/sender_media_card.dart';
+import 'package:QuickMessenger/core/widgets/app_snackbar.dart';
+import 'package:QuickMessenger/core/utils/networkcheck.dart';
 
+import '../widgets/sender_message_card.dart';
 class ChatScreen extends StatefulWidget {
   const ChatScreen(
       {super.key,
@@ -53,11 +52,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Map<String, IconData> iconList = {
     "Audio": Icons.music_note_outlined,
     "Image": Icons.image_outlined,
-    "Video": FontAwesomeIcons.video,
-    "Document": FontAwesomeIcons.file,
-    "Unknown Type": FontAwesomeIcons.file,
+    "Video": Icons.videocam,
+    "Document": Icons.edit_document,
+    "Unknown Type": Icons.insert_drive_file_outlined,
     "Compressed File": Icons.folder_zip_outlined,
-    "PDF Document": FontAwesomeIcons.filePdf,
+    "PDF Document": Icons.picture_as_pdf,
   };
   bool loading = false;
   File? pickedImage;
@@ -680,6 +679,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           radius: 25,
                           child: ClipOval(
                             child: Image.network(
+                              errorBuilder: (context, error, stackTrace) {
+                                return Text(widget.username.toString()[0].toUpperCase());
+                              },
                               width: 55,
                               height: MediaQuery.of(context).size.height,
                               fit: BoxFit.cover,
@@ -1339,7 +1341,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                         }
                                       },
                                       icon: Icon(
-                                        FontAwesomeIcons.paperclip,
+                                        Icons.attach_file_outlined,
                                         size: 20,
                                       )),
                                 ),

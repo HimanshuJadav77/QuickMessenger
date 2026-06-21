@@ -6,12 +6,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/HomeScreens/Profile/followfollowing.dart';
-import 'package:QuickMessenger/HomeScreens/chatscreen.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
-import 'package:QuickMessenger/Ui/snackbar.dart';
+import 'package:QuickMessenger/features/profile/screens/followers_following_screen.dart';
+import 'package:QuickMessenger/features/chat/screens/chat_screen.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:QuickMessenger/core/widgets/app_snackbar.dart';
 
-import '../../Ui/elvb.dart';
+import '../../../core/widgets/elvb.dart';
 
 class SearchUserProfile extends StatefulWidget {
   const SearchUserProfile(
@@ -419,7 +419,7 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
                                           child: ClipOval(
                                             child: Image.network(
                                               errorBuilder: (context, error, stackTrace) {
-                                                return CircularProgressIndicator();
+                                                return Text(widget.username[0].toString().toUpperCase());
                                               },
                                               width: 120,
                                               height: MediaQuery.of(context).size.height,

@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
-import 'package:QuickMessenger/Ui/elvb.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:QuickMessenger/core/widgets/elvb.dart';
 
-import '../home.dart';
+import '../../chat/screens/main_navigation_screen.dart';
 
 class Blockeduserlist extends StatefulWidget {
   const Blockeduserlist({super.key});

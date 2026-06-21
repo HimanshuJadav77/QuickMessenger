@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:QuickMessenger/Logins/register.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
-import 'package:QuickMessenger/Ui/elvb.dart';
-import 'package:QuickMessenger/networkcheck.dart';
-import 'login.dart';
+import 'package:QuickMessenger/features/auth/screens/register_screen.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:QuickMessenger/core/widgets/elvb.dart';
+import 'package:QuickMessenger/core/utils/networkcheck.dart';
+import 'login_screen.dart';
 
 class LogReg extends StatefulWidget {
   const LogReg({super.key});

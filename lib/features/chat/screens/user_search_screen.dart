@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/HomeScreens/Profile/seachuserprofile.dart';
-import 'package:QuickMessenger/networkcheck.dart';
-import '../Ui/customcard.dart';
+import 'package:QuickMessenger/features/profile/screens/user_profile_screen.dart';
+import 'package:QuickMessenger/core/utils/networkcheck.dart';
+import '../../../core/widgets/custom_card.dart';
 
 class SearchUser extends StatefulWidget {
   const SearchUser({super.key});

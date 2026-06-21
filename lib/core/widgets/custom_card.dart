@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 class CustomCard extends StatelessWidget {
@@ -44,6 +46,9 @@ class CustomCard extends StatelessWidget {
                   radius: 30,
                   child: ClipOval(
                     child: Image.network(
+                      errorBuilder: (context, error, stackTrace) {
+                        return Text(username.toString()[0].toUpperCase());
+                      },
                       width: 56,
                       height: MediaQuery.of(context).size.height,
                       fit: BoxFit.cover,

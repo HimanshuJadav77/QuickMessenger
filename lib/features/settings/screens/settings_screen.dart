@@ -2,10 +2,10 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/HomeScreens/Profile/blockeduserlist.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
+import 'package:QuickMessenger/features/settings/screens/blocked_users_screen.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
 
-import '../home.dart';
+import '../../chat/screens/main_navigation_screen.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});

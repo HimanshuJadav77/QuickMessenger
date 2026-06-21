@@ -1,18 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:QuickMessenger/HomeScreens/Profile/myprofile.dart';
-import 'package:QuickMessenger/HomeScreens/Profile/settings.dart';
-import 'package:QuickMessenger/HomeScreens/chathome.dart';
-import 'package:QuickMessenger/HomeScreens/followedchatlist.dart';
-import 'package:QuickMessenger/HomeScreens/searchuser.dart';
-import 'package:QuickMessenger/HomeScreens/updates.dart';
-import 'package:QuickMessenger/Logins/logreg.dart';
+import 'package:QuickMessenger/features/profile/screens/profile_screen.dart';
+import 'package:QuickMessenger/features/settings/screens/settings_screen.dart';
+import 'package:QuickMessenger/features/chat/screens/chat_list_screen.dart';
+import 'package:QuickMessenger/features/chat/screens/following_chats_screen.dart';
+import 'package:QuickMessenger/features/chat/screens/user_search_screen.dart';
+import 'package:QuickMessenger/features/notifications/screens/notification_screen.dart';
+import 'package:QuickMessenger/features/auth/screens/auth_gate_screen.dart';
 
-import '../Logins/showdialogs.dart';
-import '../networkcheck.dart';
+import '../../../core/widgets/app_dialogs.dart';
+import '../../../core/utils/networkcheck.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -166,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                 child: ClipOval(
                                                   child: Image.network(
                                                     errorBuilder: (context, error, stackTrace) {
-                                                      return CircularProgressIndicator();
+                                                      return Text(username[0].toString().toUpperCase(),style: TextStyle(fontSize: 30),);
                                                     },
                                                     width: 120,
                                                     height: MediaQuery.of(context).size.height,
@@ -419,7 +418,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               labelColor: Colors.indigoAccent,
                               tabs: const [
                                 Tab(
-                                  icon: FaIcon(FontAwesomeIcons.message),
+                                  icon: Icon(Icons.message),
                                   text: "Chats",
                                 ),
                                 Tab(

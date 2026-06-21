@@ -3,7 +3,7 @@
 
 import 'dart:io';
 
-import 'package:QuickMessenger/Ui/snackbar.dart';
+import 'package:QuickMessenger/core/widgets/app_snackbar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';

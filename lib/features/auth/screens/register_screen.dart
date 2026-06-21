@@ -6,12 +6,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:QuickMessenger/Logins/login.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
-import 'package:QuickMessenger/Logins/verification.dart';
-import 'package:QuickMessenger/Ui/elvb.dart';
-import 'package:QuickMessenger/Ui/snackbar.dart';
-import 'package:QuickMessenger/networkcheck.dart';
+import 'package:QuickMessenger/features/auth/screens/login_screen.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:QuickMessenger/features/auth/screens/verification_screen.dart';
+import 'package:QuickMessenger/core/widgets/elvb.dart';
+import 'package:QuickMessenger/core/widgets/app_snackbar.dart';
+import 'package:QuickMessenger/core/utils/networkcheck.dart';
 
 class Register extends StatefulWidget {
   const Register({super.key});

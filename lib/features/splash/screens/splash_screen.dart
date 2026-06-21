@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/Logins/logreg.dart';
+import 'package:QuickMessenger/features/auth/screens/auth_gate_screen.dart';
 
-import 'home.dart';
+import '../../chat/screens/main_navigation_screen.dart';
 
 class Splash extends StatefulWidget {
   const Splash({super.key, this.snapshot});

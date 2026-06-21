@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
 
 bool connectedToInternet = false;
 
@@ -22,10 +22,7 @@ class NetworkCheck {
                   "Network", "You are not connected to Internet!", context);
             }
             break;
-          default:
-            connectedToInternet = false;
-            break;
-        }
+          }
       },
     );
   }

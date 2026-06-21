@@ -8,11 +8,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:QuickMessenger/HomeScreens/Profile/settings.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
+import 'package:QuickMessenger/features/settings/screens/settings_screen.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
 
-import '../../Ui/snackbar.dart';
-import 'followfollowing.dart';
+import '../../../core/widgets/app_snackbar.dart';
+import 'followers_following_screen.dart';
 
 class MyProfile extends StatefulWidget {
   const MyProfile({
@@ -203,7 +203,7 @@ class _MyProfileState extends State<MyProfile> {
                                           )
                                         : Image.network(
                                             errorBuilder: (context, error, stackTrace) {
-                                              return CircularProgressIndicator();
+                                              return Text(username[0].toString().toUpperCase());
                                             },
                                             width: 120,
                                             height: MediaQuery.of(context).size.height,

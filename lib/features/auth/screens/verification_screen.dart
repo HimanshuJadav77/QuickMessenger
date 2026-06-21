@@ -3,10 +3,10 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/Logins/logreg.dart';
-import 'package:QuickMessenger/Ui/elvb.dart';
+import 'package:QuickMessenger/features/auth/screens/auth_gate_screen.dart';
+import 'package:QuickMessenger/core/widgets/elvb.dart';
 
-import '../HomeScreens/home.dart';
+import '../../chat/screens/main_navigation_screen.dart';
 
 class Verification extends StatefulWidget {
   const Verification({super.key});

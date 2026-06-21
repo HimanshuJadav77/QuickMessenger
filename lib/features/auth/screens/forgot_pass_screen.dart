@@ -2,10 +2,10 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
-import 'package:QuickMessenger/Ui/snackbar.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:QuickMessenger/core/widgets/app_snackbar.dart';
 
-import '../Ui/elvb.dart';
+import '../../../core/widgets/elvb.dart';
 
 class Forgotpass extends StatefulWidget {
   const Forgotpass({super.key});

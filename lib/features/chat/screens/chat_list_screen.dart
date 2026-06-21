@@ -1,11 +1,11 @@
 // ignore_for_file: use_build_context_synchronously
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:QuickMessenger/HomeScreens/chatscreen.dart';
-import 'package:QuickMessenger/Logins/showdialogs.dart';
-import 'package:QuickMessenger/Ui/customcard.dart';
+import 'package:QuickMessenger/features/chat/screens/chat_screen.dart';
+import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:QuickMessenger/core/widgets/custom_card.dart';
 
-import 'home.dart';
+import 'main_navigation_screen.dart';
 
 class ChatHome extends StatefulWidget {
   const ChatHome({super.key});
