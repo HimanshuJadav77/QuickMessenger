@@ -1,14 +1,19 @@
 import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
-import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
+import 'package:quick_messenger/core/widgets/app_dialogs.dart';
 
 bool connectedToInternet = false;
 
 class NetworkCheck {
+  static final NetworkCheck _instance = NetworkCheck._internal();
+  factory NetworkCheck() => _instance;
+  NetworkCheck._internal();
+
   StreamSubscription<InternetStatus>? internetConnectionCheck;
 
-  initializeInternetStatus(BuildContext context) {
+  void initializeInternetStatus(BuildContext context) {
+    internetConnectionCheck?.cancel();
     internetConnectionCheck = InternetConnection().onStatusChange.listen(
       (event) {
         switch (event) {
@@ -22,12 +27,13 @@ class NetworkCheck {
                   "Network", "You are not connected to Internet!", context);
             }
             break;
-          }
+        }
       },
     );
   }
 
-  cancelSubscription() {
+  void cancelSubscription() {
     internetConnectionCheck?.cancel();
+    internetConnectionCheck = null;
   }
 }

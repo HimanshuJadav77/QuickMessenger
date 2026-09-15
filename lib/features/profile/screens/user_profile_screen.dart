@@ -1,19 +1,26 @@
 // ignore_for_file: prefer_typing_uninitialized_variables
 
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import 'package:flutter/material.dart';
-import 'package:QuickMessenger/features/profile/screens/followers_following_screen.dart';
-import 'package:QuickMessenger/features/chat/screens/chat_screen.dart';
-import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
-import 'package:QuickMessenger/core/widgets/app_snackbar.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quick_messenger/core/providers/auth_providers.dart';
+import 'package:quick_messenger/core/theme/app_colors.dart';
+import 'package:quick_messenger/core/theme/app_spacing.dart';
+import 'package:quick_messenger/core/widgets/app_snackbar.dart';
+import 'package:quick_messenger/core/widgets/glass_action_sheet.dart';
+import 'package:quick_messenger/features/profile/screens/followers_following_screen.dart';
+import 'package:quick_messenger/features/chat/screens/chat_screen.dart';
 
-import '../../../core/widgets/elvb.dart';
-
-class SearchUserProfile extends StatefulWidget {
+/// iOS-native other-user profile.
+///
+/// - [CupertinoPageScaffold] + [CupertinoNavigationBar]
+/// - Follow / Request / Following via accent [CupertinoButton]
+/// - Message FAB → accent circle button → [ChatScreen] via [CupertinoPageRoute]
+/// - Block/Unblock via [CupertinoActionSheet] + [CupertinoAlertDialog]
+/// - Firestore follow/request/block logic unchanged from original.
+class SearchUserProfile extends ConsumerStatefulWidget {
   const SearchUserProfile(
       {super.key,
       required this.username,
@@ -29,21 +36,20 @@ class SearchUserProfile extends StatefulWidget {
   final userid;
 
   @override
-  State<SearchUserProfile> createState() => _SearchUserProfileState();
+  ConsumerState<SearchUserProfile> createState() =>
+      _SearchUserProfileState();
 }
 
-class _SearchUserProfileState extends State<SearchUserProfile> {
+class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
   bool private = true;
   bool public = true;
   final _firestore = FirebaseFirestore.instance;
-  final currentUserId = FirebaseAuth.instance.currentUser!.uid;
   bool followState = false;
-  var follower = 0;
-  var following = 0;
   bool block = false;
   bool blockedbyUser = false;
   bool requested = false;
-  var privacyMode;
+
+  String get currentUserId => ref.read(currentUserIdProvider);
 
   @override
   void initState() {
@@ -53,28 +59,34 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
     getRequestState();
   }
 
-  getRequestState() async {
-    final get = await _firestore.collection("Users").doc(currentUserId).collection("requests").doc(widget.userid).get();
-    if (get.exists) {
-      final request = get.data()?["requested"];
-      if (request == true) {
-        setState(() {
-          requested = true;
-        });
+  Future<void> getRequestState() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
+    final get = await _firestore
+        .collection("Users")
+        .doc(uid)
+        .collection("requests")
+        .doc(widget.userid)
+        .get();
+    if (get.exists && mounted) {
+      if (get.data()?["requested"] == true) {
+        setState(() => requested = true);
       }
     }
   }
 
-  setFollowFollowing() async {
+  Future<void> setFollowFollowing() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
     final myfollower = await FirebaseFirestore.instance
         .collection("Users")
-        .doc(currentUserId)
+        .doc(uid)
         .collection("followers")
         .doc(widget.userid)
         .get();
     final myfollowing = await FirebaseFirestore.instance
         .collection("Users")
-        .doc(currentUserId)
+        .doc(uid)
         .collection("following")
         .doc(widget.userid)
         .get();
@@ -82,66 +94,66 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
         .collection("Users")
         .doc(widget.userid)
         .collection("followers")
-        .doc(currentUserId)
+        .doc(uid)
         .get();
     final userfollowing = await FirebaseFirestore.instance
         .collection("Users")
         .doc(widget.userid)
         .collection("following")
-        .doc(currentUserId)
+        .doc(uid)
         .get();
-    if (myfollower.exists == false) {
+    if (!myfollower.exists) {
       await FirebaseFirestore.instance
           .collection("Users")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("followers")
           .doc(widget.userid)
           .set({"follower": false});
-    } else if (myfollowing.exists == false) {
+    } else if (!myfollowing.exists) {
       await FirebaseFirestore.instance
           .collection("Users")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("following")
           .doc(widget.userid)
           .set({"following": false});
-    } else if (userfollowing.exists == false) {
+    } else if (!userfollowing.exists) {
       await FirebaseFirestore.instance
           .collection("Users")
           .doc(widget.userid)
           .collection("following")
-          .doc(currentUserId)
+          .doc(uid)
           .set({"following": false});
-    } else if (userfollower.exists == false) {
+    } else if (!userfollower.exists) {
       await FirebaseFirestore.instance
           .collection("Users")
           .doc(widget.userid)
           .collection("followers")
-          .doc(currentUserId)
+          .doc(uid)
           .set({"follower": false});
     }
   }
 
-  blockUser(blockUserid) async {
+  Future<void> blockUser(blockUserid) async {
+    final uid = currentUserId;
+    if (uid.isEmpty) return;
     if (block) {
       await FirebaseFirestore.instance
           .collection("block")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("blockedid")
           .doc(blockUserid)
           .set({"blocked": false});
-      setState(() {
-        block = false;
-      });
+      if (mounted) setState(() => block = false);
     } else {
       await FirebaseFirestore.instance
           .collection("Users")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("followers")
           .doc(widget.userid)
           .update({"follower": false});
       await FirebaseFirestore.instance
           .collection("Users")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("following")
           .doc(widget.userid)
           .update({"following": false});
@@ -149,17 +161,17 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
           .collection("Users")
           .doc(widget.userid)
           .collection("followers")
-          .doc(currentUserId)
+          .doc(uid)
           .update({"follower": false});
       await FirebaseFirestore.instance
           .collection("Users")
           .doc(widget.userid)
           .collection("following")
-          .doc(currentUserId)
+          .doc(uid)
           .update({"following": false});
       await FirebaseFirestore.instance
           .collection("block")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("blockedid")
           .doc(blockUserid)
           .set({"blocked": true});
@@ -167,635 +179,580 @@ class _SearchUserProfileState extends State<SearchUserProfile> {
           .collection("Users")
           .doc(blockUserid)
           .collection("requests")
-          .doc(currentUserId)
+          .doc(uid)
           .update({"request": false});
-      setState(() {
-        block = true;
-        requested = false;
-      });
+      if (mounted) {
+        setState(() {
+          block = true;
+          requested = false;
+        });
+      }
     }
   }
 
-  getBlockState() async {
-    final getBlockState = await FirebaseFirestore.instance
+  Future<void> getBlockState() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
+    final doc = await FirebaseFirestore.instance
         .collection("block")
-        .doc(currentUserId)
+        .doc(uid)
         .collection("blockedid")
         .doc(widget.userid)
         .get();
-    if (!getBlockState.exists) {
+    if (!doc.exists) {
       await FirebaseFirestore.instance
           .collection("block")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("blockedid")
           .doc(widget.userid)
           .set({"blocked": false});
+      return;
     }
-    final data = getBlockState.data()?["blocked"].toString();
-    if (data == "true") {
-      setState(() {
-        block = true;
-      });
+    if (doc.data()?["blocked"] == true && mounted) {
+      setState(() => block = true);
     }
   }
 
-  request() {
+  Future<void> request() async {
+    final uid = currentUserId;
+    if (uid.isEmpty) return;
     if (requested) {
-      _firestore
+      await _firestore
           .collection("Users")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("requests")
           .doc(widget.userid)
           .set({"requested": true});
-
-      _firestore
+      await _firestore
           .collection("Users")
           .doc(widget.userid)
           .collection("requests")
-          .doc(currentUserId)
+          .doc(uid)
           .set({"request": true});
-    } else if (!requested) {
-      _firestore
+    } else {
+      await _firestore
           .collection("Users")
-          .doc(currentUserId)
+          .doc(uid)
           .collection("requests")
           .doc(widget.userid)
           .set({"requested": false});
-
-      _firestore
+      await _firestore
           .collection("Users")
           .doc(widget.userid)
           .collection("requests")
-          .doc(currentUserId)
+          .doc(uid)
           .set({"request": false});
     }
   }
 
   Future<void> followUnfollowUser(bool state) async {
-    final getBlockState =
-        await _firestore.collection("block").doc(currentUserId).collection("blockedid").doc(widget.userid).get();
-    if (getBlockState.exists) {
-      var block = getBlockState["blocked"];
-      if (block.toString() == "true") {
-        mounted ? showSnackBar(context, "Unblock ${widget.username} first.") : null;
-      } else if (block.toString() == "false") {
-        try {
-          if (state) {
-            _firestore
-                .collection("Users")
-                .doc(currentUserId)
-                .collection("following")
-                .doc(widget.userid)
-                .set({"following": true});
-
-            _firestore
-                .collection("Users")
-                .doc(widget.userid)
-                .collection("followers")
-                .doc(currentUserId)
-                .set({"follower": true});
-          } else if (!state) {
-            _firestore
-                .collection("Users")
-                .doc(currentUserId)
-                .collection("following")
-                .doc(widget.userid)
-                .update({"following": false});
-            _firestore
-                .collection("Users")
-                .doc(widget.userid)
-                .collection("followers")
-                .doc(currentUserId)
-                .set({"follower": false});
-            setState(() {
-              requested = false;
-            });
-          }
-        } on FirebaseException catch (e) {
-          mounted ? showSnackBar(context, "$e") : null;
-        }
+    final uid = currentUserId;
+    if (uid.isEmpty) return;
+    final doc = await _firestore
+        .collection("block")
+        .doc(uid)
+        .collection("blockedid")
+        .doc(widget.userid)
+        .get();
+    if (doc.data()?["blocked"] == true) {
+      if (mounted) showSnackBar(context, "Unblock ${widget.username} first.");
+      return;
+    }
+    try {
+      if (state) {
+        await _firestore
+            .collection("Users")
+            .doc(uid)
+            .collection("following")
+            .doc(widget.userid)
+            .set({"following": true});
+        await _firestore
+            .collection("Users")
+            .doc(widget.userid)
+            .collection("followers")
+            .doc(uid)
+            .set({"follower": true});
+      } else {
+        await _firestore
+            .collection("Users")
+            .doc(uid)
+            .collection("following")
+            .doc(widget.userid)
+            .update({"following": false});
+        await _firestore
+            .collection("Users")
+            .doc(widget.userid)
+            .collection("followers")
+            .doc(uid)
+            .set({"follower": false});
+        if (mounted) setState(() => requested = false);
       }
+    } on FirebaseException catch (e) {
+      if (mounted) showSnackBar(context, "$e");
+    }
+  }
+
+  void _showBlockSheet() {
+    LGActionSheet.showConfirmation(
+      context: context,
+      title: block ? 'Unblock ${widget.username}?' : 'Block ${widget.username}?',
+      message: block
+          ? 'They will be able to send you messages and view your profile.'
+          : 'Blocked users cannot message you or view your profile.',
+      confirmTitle: block ? 'Unblock' : 'Block',
+      isDestructive: !block,
+      onConfirm: () => blockUser(widget.userid),
+    );
+  }
+
+  void _openChat() async {
+    if (private && followState || public) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        CupertinoPageRoute(
+          builder: (_) => ChatScreen(
+            participantId: widget.userid,
+            participantName: widget.username,
+            participantImageUrl: widget.imageurl,
+            participantAbout: widget.about,
+            participantEmail: widget.email,
+          ),
+        ),
+      );
+    } else {
+      if (!mounted) return;
+      showCupertinoDialog(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: const Text('Private profile'),
+          content: const Text('This profile is private — send a request first.'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        actions: [
-          blockedbyUser == false
-              ? IconButton(
-                  onPressed: () {
-                    showMenu(
-                      color: Colors.white,
-                      elevation: 10,
-                      shadowColor: Colors.black54,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      context: context,
-                      position: RelativeRect.fromLTRB(100, 20, 27, 20),
-                      // Adjust position as needed
-                      items: [
-                        PopupMenuItem<String>(
-                          value: '',
-                          child: Text(
-                            block ? "Unblock" : 'Block',
-                            style: TextStyle(color: block ? Colors.blue : Colors.red),
-                          ),
-                          onTap: () {
-                            showMessageBox(
-                                block ? "Unblock" : "Block",
-                                block
-                                    ? "Are you sure to Unblock ${widget.username}?"
-                                    : "Are you sure to  block ${widget.username}?",
-                                context,
-                                block ? "Unblock" : "Block", () {
-                              blockUser(widget.userid);
-                              Navigator.pop(context);
-                            });
-                          },
-                        ),
-                      ],
-                    );
-                  },
-                  icon: Icon(Icons.more_vert_outlined))
-              : Center()
-        ],
-        leading: IconButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            icon: Icon(Icons.arrow_back_ios_new)),
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final accent = CupertinoTheme.of(context).primaryColor;
+    final uid = ref.watch(currentUserIdProvider);
+    if (uid.isEmpty) {
+      return const CupertinoPageScaffold(
+        child: Center(child: CupertinoActivityIndicator()),
+      );
+    }
+
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: Text(widget.username.toString()),
+        leading: CupertinoNavigationBarBackButton(
+          onPressed: () => Navigator.pop(context),
+        ),
+        trailing: blockedbyUser
+            ? null
+            : CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: _showBlockSheet,
+                child: const Icon(CupertinoIcons.ellipsis_circle),
+              ),
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.divider(isDark),
+            width: 0.5,
+          ),
+        ),
       ),
-      body: StreamBuilder(
+      child: SafeArea(
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection("block")
               .doc(widget.userid)
               .collection("blockedid")
-              .doc(currentUserId)
+              .doc(uid)
               .snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData || snapshot.data!.exists == false) {
-              if (snapshot.connectionState != ConnectionState.waiting) {
-                FirebaseFirestore.instance
-                    .collection("block")
-                    .doc(widget.userid)
-                    .collection("blockedid")
-                    .doc(currentUserId)
-                    .set({"blocked": false});
-                return Center(
-                  child: CircularProgressIndicator(),
-                );
-              }
+          builder: (context, blockSnap) {
+            if (blockSnap.connectionState == ConnectionState.waiting ||
+                !blockSnap.hasData) {
+              return const Center(child: CupertinoActivityIndicator());
             }
-            if (snapshot.hasData) {
-              final blockState = snapshot.data!["blocked"];
-              if (blockState == true) {
-                blockedbyUser = true;
-                requested = false;
-                request();
-              } else if (blockState == false) {
-                blockedbyUser = false;
-              }
+            if (!(blockSnap.data?.exists ?? false)) {
+              FirebaseFirestore.instance
+                  .collection("block")
+                  .doc(widget.userid)
+                  .collection("blockedid")
+                  .doc(uid)
+                  .set({"blocked": false});
+              return const Center(child: CupertinoActivityIndicator());
             }
 
-            return blockedbyUser
-                ? Center(
-                    child: Text("${widget.username} has been blocked you."),
-                  )
-                : StreamBuilder(
-                    stream: FirebaseFirestore.instance
+            final isBlockedByThem =
+                blockSnap.data?.data()?["blocked"] == true;
+            if (isBlockedByThem) {
+              return Center(
+                child: Padding(
+                  padding: EdgeInsets.all(AppSpacing.lg),
+                  child: Text(
+                    "${widget.username} has blocked you.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textSecondary(isDark)),
+                  ),
+                ),
+              );
+            }
+
+            return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection("Users")
+                  .doc(widget.userid)
+                  .collection("privacy")
+                  .doc("mode")
+                  .snapshots(),
+              builder: (context, privacySnap) {
+                if (!privacySnap.hasData ||
+                    !(privacySnap.data?.exists ?? false)) {
+                  if (privacySnap.connectionState !=
+                      ConnectionState.waiting) {
+                    FirebaseFirestore.instance
                         .collection("Users")
-                        .doc(widget.userid) // Assuming currentUserId is defined somewhere
+                        .doc(widget.userid)
                         .collection("privacy")
                         .doc("mode")
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData || snapshot.data!.exists == false) {
-                        if (snapshot.connectionState != ConnectionState.waiting) {
-                          FirebaseFirestore.instance
-                              .collection("Users")
-                              .doc(widget.userid)
-                              .collection("privacy")
-                              .doc("mode")
-                              .set({"privacy": "public"});
-                          return Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-                      }
+                        .set({"privacy": "public"});
+                  }
+                  return const Center(
+                      child: CupertinoActivityIndicator());
+                }
 
-                      final privacy = snapshot.data?["privacy"];
+                final privacy =
+                    privacySnap.data?.data()?["privacy"] ?? 'public';
+                final isPrivate = privacy == "private";
 
-                      if (privacy == "private") {
-                        private = true;
-                        public = false;
-                      } else if (privacy == "public") {
-                        public = true;
-                        private = false;
-                      }
-
-                      return ListView(
+                return ListView(
+                  children: [
+                    SizedBox(height: AppSpacing.md),
+                    // Header: avatar + counts + message button
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md),
+                      child: Row(
                         children: [
-                          SizedBox(
-                            height: 190,
-                            child: Stack(
-                              children: [
-                                Positioned(
-                                    top: 100,
-                                    right: 100,
+                          Container(
+                            width: 92,
+                            height: 92,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: accent.withValues(alpha: 0.15),
+                              image: (widget.imageurl ?? '')
+                                      .toString()
+                                      .isNotEmpty
+                                  ? DecorationImage(
+                                      image: NetworkImage(
+                                          widget.imageurl.toString()),
+                                      fit: BoxFit.cover,
+                                      onError: (_, __) {},
+                                    )
+                                  : null,
+                              border: Border.all(
+                                color: AppColors.divider(isDark),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: (widget.imageurl ?? '')
+                                    .toString()
+                                    .isEmpty
+                                ? Center(
                                     child: Text(
-                                      privacy == "private" ? "Private" : "Public",
-                                      style: TextStyle(color: Colors.blue),
-                                    )),
-                                Row(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 30.0),
-                                      child: Card(
-                                        elevation: 10,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(60)),
-                                        child: CircleAvatar(
-                                          radius: 50,
-                                          child: ClipOval(
-                                            child: Image.network(
-                                              errorBuilder: (context, error, stackTrace) {
-                                                return Text(widget.username[0].toString().toUpperCase());
-                                              },
-                                              width: 120,
-                                              height: MediaQuery.of(context).size.height,
-                                              fit: BoxFit.cover,
-                                              widget.imageurl,
-                                              filterQuality: FilterQuality.high,
-                                            ),
-                                          ),
-                                        ),
+                                      widget.username
+                                              .toString()
+                                              .isNotEmpty
+                                          ? widget.username
+                                              .toString()[0]
+                                              .toUpperCase()
+                                          : '?',
+                                      style: TextStyle(
+                                        fontSize: 36,
+                                        fontWeight: FontWeight.w600,
+                                        color: accent,
                                       ),
                                     ),
-                                    InkWell(
-                                      onTap: () {
-                                        if (private && followState || public) {
-                                          Navigator.push(
-                                            context,
-                                            PageRouteBuilder(
-                                              pageBuilder: (context, animation, secondaryAnimation) =>
-                                                  FollowFollowingPage(
-                                                userid: widget.userid,
-                                              ),
-                                              // The page to navigate to
-                                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                                const begin = Offset(2.0, 1.0);
-                                                const end = Offset.zero;
-                                                var tween = Tween(begin: begin, end: end);
-                                                final offsetAnimation = animation.drive(tween);
-                                                return SlideTransition(
-                                                  position: offsetAnimation,
-                                                  child: child,
-                                                );
-                                              },
-                                            ),
-                                          );
-                                        }
-                                      },
-                                      child: SizedBox(
-                                        width: 270,
-                                        height: 70,
-                                        child: Stack(
-                                          children: [
-                                            Positioned(
-                                              child: Padding(
-                                                padding: const EdgeInsets.only(left: 40, top: 5),
-                                                child: Text(
-                                                  "Follower",
-                                                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              right: 30,
-                                              child: Padding(
-                                                padding: const EdgeInsets.only(left: 40, top: 5),
-                                                child: Text(
-                                                  "Following",
-                                                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              right: 195,
-                                              top: 25,
-                                              child: StreamBuilder(
-                                                  stream: _firestore
-                                                      .collection("Users")
-                                                      .doc(widget.userid)
-                                                      .collection("followers")
-                                                      .where("follower", isEqualTo: true)
-                                                      .snapshots(),
-                                                  builder: (context, snapshot) {
-                                                    if (snapshot.connectionState != ConnectionState.waiting) {
-                                                      if (!snapshot.hasData && snapshot.data!.docs.isEmpty) {
-                                                        _firestore
-                                                            .collection("Users")
-                                                            .doc(widget.userid)
-                                                            .collection("followers")
-                                                            .doc(currentUserId)
-                                                            .set({"follower": false});
-                                                        return Center(
-                                                          child: CircularProgressIndicator(),
-                                                        );
-                                                      }
-                                                    }
-                                                    if (snapshot.hasData) {
-                                                      return Padding(
-                                                        padding: const EdgeInsets.only(left: 70, top: 5),
-                                                        child: Text(
-                                                          "${snapshot.data?.docs.length}",
-                                                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
-                                                        ),
-                                                      );
-                                                    }
-                                                    return Center();
-                                                  }),
-                                            ),
-                                            Positioned(
-                                              right: 65,
-                                              top: 25,
-                                              child: StreamBuilder(
-                                                  stream: _firestore
-                                                      .collection("Users")
-                                                      .doc(widget.userid)
-                                                      .collection("following")
-                                                      .where("following", isEqualTo: true)
-                                                      .snapshots(),
-                                                  builder: (context, snapshot) {
-                                                    if (snapshot.connectionState != ConnectionState.waiting) {
-                                                      if (!snapshot.hasData && snapshot.data!.docs.isEmpty) {
-                                                        _firestore
-                                                            .collection("Users")
-                                                            .doc(widget.userid)
-                                                            .collection("following")
-                                                            .doc(currentUserId)
-                                                            .set({"following": false});
-                                                        return Center(
-                                                          child: CircularProgressIndicator(),
-                                                        );
-                                                      }
-                                                    }
-                                                    if (snapshot.hasData) {
-                                                      return Padding(
-                                                        padding: const EdgeInsets.only(left: 70, top: 5),
-                                                        child: Text(
-                                                          "${snapshot.data!.docs.length}",
-                                                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
-                                                        ),
-                                                      );
-                                                    }
-                                                    return Center();
-                                                  }),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    )
-                                  ],
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: 90,
-                                    left: 10,
-                                    right: 5,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                          width: MediaQuery.of(context).size.width - 95,
-                                          child: Divider(
-                                            color: Colors.black54,
-                                          )),
-                                      Padding(
-                                        padding: const EdgeInsets.only(left: 10),
-                                        child: SizedBox(
-                                          height: 70,
-                                          width: 70,
-                                          child: FloatingActionButton(
-                                            elevation: 10,
-                                            splashColor: Colors.white24,
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
-                                            onPressed: () async {
-                                              if (private && followState || public) {
-                                                Navigator.push(
-                                                  context,
-                                                  PageRouteBuilder(
-                                                    pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
-                                                      imageurl: widget.imageurl,
-                                                      username: widget.username,
-                                                      userid: widget.userid,
-                                                      about: widget.about,
-                                                      email: widget.email,
-                                                    ),
-                                                    // The page to navigate to
-                                                    transitionsBuilder:
-                                                        (context, animation, secondaryAnimation, child) {
-                                                      const begin = Offset(2.0, 1.0);
-                                                      const end = Offset.zero;
-                                                      var tween = Tween(begin: begin, end: end);
-                                                      final offsetAnimation = animation.drive(tween);
-                                                      return SlideTransition(
-                                                        position: offsetAnimation,
-                                                        child: child,
-                                                      );
-                                                    },
-                                                  ),
-                                                );
-                                                await _firestore
-                                                    .collection("Users")
-                                                    .doc(currentUserId)
-                                                    .collection("chats")
-                                                    .doc(widget.userid)
-                                                    .set({"chat": true, "time": FieldValue.serverTimestamp()});
-                                              } else {
-                                                showCustomDialog(
-                                                    "User", "This profile is private you must request.", context);
-                                              }
-                                            },
-                                            backgroundColor: Colors.blue.shade400,
-                                            child: Icon(
-                                              Icons.message_outlined,
-                                              color: Colors.white,
-                                              size: 30,
-                                            ),
+                                  )
+                                : null,
+                          ),
+                          SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              onPressed: (isPrivate && followState ||
+                                      !isPrivate)
+                                  ? () => Navigator.push(
+                                        context,
+                                        CupertinoPageRoute(
+                                          builder: (_) =>
+                                              FollowFollowingPage(
+                                            userid: widget.userid,
                                           ),
                                         ),
                                       )
-                                    ],
+                                  : null,
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _FollowCount(
+                                    label: 'Followers',
+                                    stream: _firestore
+                                        .collection("Users")
+                                        .doc(widget.userid)
+                                        .collection("followers")
+                                        .where("follower",
+                                            isEqualTo: true)
+                                        .snapshots(),
+                                    isDark: isDark,
                                   ),
-                                ),
-                                Positioned(
-                                  top: 120,
-                                  left: 2,
-                                  right: 2,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: ListTile(
-                                      title: Text(
-                                        "Username",
-                                        style: TextStyle(fontSize: 15, color: Colors.blue, fontWeight: FontWeight.bold),
-                                      ),
-                                      subtitle: Text(
-                                        widget.username,
-                                        style: TextStyle(fontSize: 18, color: Colors.black),
-                                      ),
-                                    ),
+                                  _FollowCount(
+                                    label: 'Following',
+                                    stream: _firestore
+                                        .collection("Users")
+                                        .doc(widget.userid)
+                                        .collection("following")
+                                        .where("following",
+                                            isEqualTo: true)
+                                        .snapshots(),
+                                    isDark: isDark,
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(
-                            width: double.maxFinite,
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 10.0),
-                              child: ListTile(
-                                title: Text(
-                                  "Email",
-                                  style: TextStyle(fontSize: 15, color: Colors.blue, fontWeight: FontWeight.bold),
-                                ),
-                                subtitle: Text(
-                                  widget.email,
-                                  style: TextStyle(fontSize: 18, color: Colors.black),
-                                ),
+                                ],
                               ),
                             ),
                           ),
-                          widget.about != ""
-                              ? Padding(
-                                  padding: const EdgeInsets.only(left: 10.0),
-                                  child: ListTile(
-                                    title: Text(
-                                      "About",
-                                      style: TextStyle(fontSize: 15, color: Colors.blue, fontWeight: FontWeight.bold),
-                                    ),
-                                    subtitle: Text(
-                                      widget.about,
-                                      style: TextStyle(fontSize: 18, color: Colors.black),
-                                    ),
-                                  ),
-                                )
-                              : Center(),
-                          Padding(
-                            padding: const EdgeInsets.all(10.0),
-                            child: Divider(
-                              color: Colors.black54,
+                          GestureDetector(
+                            onTap: _openChat,
+                            child: Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: accent,
+                              ),
+                              child: const Icon(
+                                CupertinoIcons.chat_bubble_2_fill,
+                                color: CupertinoColors.white,
+                                size: 26,
+                              ),
                             ),
                           ),
-                          SizedBox(
-                            width: 400,
-                            child: StreamBuilder(
-                                stream: _firestore
-                                    .collection("Users")
-                                    .doc(currentUserId)
-                                    .collection("following")
-                                    .doc(widget.userid)
-                                    .snapshots(),
-                                builder: (context, snapshot) {
-                                  if (!snapshot.hasData || snapshot.data!.exists == false) {
-                                    if (snapshot.connectionState != ConnectionState.waiting) {
-                                      _firestore
-                                          .collection("Users")
-                                          .doc(currentUserId)
-                                          .collection("following")
-                                          .doc(widget.userid)
-                                          .set({"following": false});
-                                      return Center();
-                                    }
-                                  }
-
-                                  if (snapshot.hasData) {
-                                    final following = snapshot.data!["following"];
-
-                                    if (following) {
-                                      followState = true;
-                                    } else {
-                                      followState = false;
-                                    }
-
-                                    return public && !following || following && public || private && following
-                                        ? Stack(
-                                            children: [
-                                              SizedBox(
-                                                width: MediaQuery.of(context).size.width,
-                                                child: Elvb(
-                                                  onpressed: () {
-                                                    !block
-                                                        ? setState(() {
-                                                            // followState = !followState;
-                                                            if (!following) {
-                                                              followUnfollowUser(true);
-                                                            } else if (following) {
-                                                              followUnfollowUser(false);
-                                                              requested = false;
-                                                              request();
-                                                            }
-                                                          })
-                                                        : showSnackBar(context, "Unblock ${widget.username} first.");
-                                                  },
-                                                  name: following ? "Following" : "Follow",
-                                                  foregroundcolor: Colors.white,
-                                                  backgroundcolor: Colors.blue.shade400,
-                                                ),
-                                              ),
-                                              Positioned(
-                                                top: 20,
-                                                left: following ? 148 : 158,
-                                                child: Icon(
-                                                  following
-                                                      ? Icons.check_circle_outline
-                                                      : Icons.person_add_alt_1_outlined,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        : private && !following && !public
-                                            ? Stack(
-                                                children: [
-                                                  SizedBox(
-                                                    width: MediaQuery.of(context).size.width,
-                                                    child: Elvb(
-                                                      onpressed: () {
-                                                        !block
-                                                            ? setState(() {
-                                                                requested = !requested;
-                                                                request();
-                                                              })
-                                                            : showSnackBar(
-                                                                context, "Unblock ${widget.username} first.");
-                                                      },
-                                                      name: requested ? "Requested" : "Request",
-                                                      foregroundcolor: Colors.white,
-                                                      backgroundcolor: Colors.blue.shade400,
-                                                    ),
-                                                  ),
-                                                  Positioned(
-                                                    top: 20,
-                                                    left: requested ? 145 : 152,
-                                                    child: Icon(
-                                                      requested
-                                                          ? Icons.check_circle_outline
-                                                          : Icons.person_add_alt_1_outlined,
-                                                      color: Colors.white,
-                                                    ),
-                                                  ),
-                                                ],
-                                              )
-                                            : Center();
-                                  }
-                                  return SizedBox();
-                                }),
-                          )
                         ],
-                      );
-                    });
-          }),
+                      ),
+                    ),
+                    // Privacy badge
+                    Padding(
+                      padding: EdgeInsets.only(
+                          top: AppSpacing.xs,
+                          left: AppSpacing.md),
+                      child: Text(
+                        isPrivate ? 'Private' : 'Public',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: accent,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: AppSpacing.sm),
+                    // Info section
+                    CupertinoListSection.insetGrouped(
+                      backgroundColor: AppColors.background(isDark),
+                      header: const Text('INFO'),
+                      children: [
+                        CupertinoListTile(
+                          title: const Text('Username'),
+                          subtitle: Text(widget.username.toString()),
+                        ),
+                        CupertinoListTile(
+                          title: const Text('Email'),
+                          subtitle: Text(widget.email.toString()),
+                        ),
+                        if ((widget.about ?? '').toString().isNotEmpty)
+                          CupertinoListTile(
+                            title: const Text('About'),
+                            subtitle:
+                                Text(widget.about.toString()),
+                          ),
+                      ],
+                    ),
+                    // Follow / Request button
+                    Padding(
+                      padding: EdgeInsets.all(AppSpacing.md),
+                      child: StreamBuilder<
+                          DocumentSnapshot<Map<String, dynamic>>>(
+                        stream: _firestore
+                            .collection("Users")
+                            .doc(uid)
+                            .collection("following")
+                            .doc(widget.userid)
+                            .snapshots(),
+                        builder: (context, snap) {
+                          if (!snap.hasData ||
+                              !(snap.data?.exists ?? false)) {
+                            if (snap.connectionState !=
+                                ConnectionState.waiting) {
+                              _firestore
+                                  .collection("Users")
+                                  .doc(uid)
+                                  .collection("following")
+                                  .doc(widget.userid)
+                                  .set({"following": false});
+                            }
+                            return const SizedBox(
+                              height: 48,
+                              child: Center(
+                                  child:
+                                      CupertinoActivityIndicator()),
+                            );
+                          }
+
+                          final following =
+                              snap.data?.data()?["following"] == true;
+                          followState = following;
+                          final showFollow = !isPrivate ||
+                              following ||
+                              (isPrivate && following);
+
+                          if (showFollow) {
+                            return SizedBox(
+                              width: double.infinity,
+                              child: CupertinoButton.filled(
+                                onPressed: block
+                                    ? () => showSnackBar(context,
+                                        "Unblock ${widget.username} first.")
+                                    : () {
+                                        if (!following) {
+                                          followUnfollowUser(true);
+                                        } else {
+                                          followUnfollowUser(false);
+                                          if (mounted) {
+                                            setState(() =>
+                                                requested = false);
+                                          }
+                                          request();
+                                        }
+                                      },
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      following
+                                          ? CupertinoIcons
+                                              .checkmark_circle
+                                          : CupertinoIcons.person_add,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(following
+                                        ? 'Following'
+                                        : 'Follow'),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
+                          return SizedBox(
+                            width: double.infinity,
+                            child: CupertinoButton.filled(
+                              onPressed: block
+                                  ? () => showSnackBar(context,
+                                      "Unblock ${widget.username} first.")
+                                  : () {
+                                      if (mounted) {
+                                        setState(() =>
+                                            requested = !requested);
+                                      }
+                                      request();
+                                    },
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    requested
+                                        ? CupertinoIcons
+                                            .checkmark_circle
+                                        : CupertinoIcons.person_add,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(requested
+                                      ? 'Requested'
+                                      : 'Request'),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _FollowCount extends StatelessWidget {
+  final String label;
+  final Stream<QuerySnapshot<Map<String, dynamic>>> stream;
+  final bool isDark;
+
+  const _FollowCount({
+    required this.label,
+    required this.stream,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final count = snapshot.data?.docs.length ?? 0;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            snapshot.connectionState == ConnectionState.waiting
+                ? const CupertinoActivityIndicator(radius: 8)
+                : Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary(isDark),
+                    ),
+                  ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary(isDark),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

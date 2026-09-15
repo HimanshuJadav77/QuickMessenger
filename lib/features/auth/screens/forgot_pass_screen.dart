@@ -1,12 +1,12 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
-import 'package:QuickMessenger/core/widgets/app_snackbar.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:quick_messenger/core/theme/app_colors.dart';
+import 'package:quick_messenger/core/theme/app_spacing.dart';
+import 'package:quick_messenger/core/widgets/app_snackbar.dart';
 
-import '../../../core/widgets/elvb.dart';
-
+/// iOS-native forgot password.
 class Forgotpass extends StatefulWidget {
   const Forgotpass({super.key});
 
@@ -16,65 +16,104 @@ class Forgotpass extends StatefulWidget {
 
 class _ForgotpassState extends State<Forgotpass> {
   final emailController = TextEditingController();
+  bool sending = false;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final email = emailController.text.trim();
+    if (email.isEmpty) {
+      showSnackBar(context, 'Enter your email first.');
+      return;
+    }
+    setState(() => sending = true);
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      emailController.clear();
+      if (!mounted) return;
+      showCupertinoDialog(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: const Text('Reset email sent'),
+          content: const Text(
+              'Check your mail app for the reset link.'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (mounted) showSnackBar(context, e.message ?? e.toString());
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            icon: Icon(Icons.arrow_back_ios)),
-        title: const Text(
-          "Forgot Password",
-          style: TextStyle(fontSize: 22, color: Colors.blue, fontWeight: FontWeight.bold),
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('Reset Password'),
+        leading: CupertinoNavigationBarBackButton(
+          onPressed: () => Navigator.pop(context),
+        ),
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.divider(isDark),
+            width: 0.5,
+          ),
         ),
       ),
-      body: ListView(
-        children: [
-          SizedBox(
-            height: 10,
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextFormField(
-              controller: emailController,
-              keyboardType: TextInputType.text,
-              decoration: InputDecoration(
-                  label: const Text("Enter Email"),
-                  prefixIcon: const Icon(Icons.mail_outline),
-                  focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.blue), borderRadius: BorderRadius.circular(30)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30))),
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.all(AppSpacing.md),
+          children: [
+            Text(
+              'Enter your account email and we\'ll send you a reset link.',
+              style: TextStyle(color: AppColors.textSecondary(isDark)),
             ),
-          ),
-          SizedBox(
-            width: MediaQuery.of(context).size.width,
-            child: Elvb(
-                textsize: 17.0,
-                heigth: 50.0,
-                onpressed: () async {
-                  if (emailController.text != "") {
-                    try {
-                      await FirebaseAuth.instance.sendPasswordResetEmail(email: emailController.text);
-                      showCustomDialog("Forgot Password", "We have been sent email on your mail check it.", context);
-                      emailController.text = "";
-                    } on FirebaseException catch (e) {
-                      showSnackBar(context, "$e");
-                    }
-                  }
-                },
-                name: "Send",
-                foregroundcolor: Colors.white,
-                backgroundcolor: Colors.blue),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-                "    If you forgot your password  enter your email in textbox \nand receive reset password mail in your mail app and reset it."),
-          ),
-        ],
+            SizedBox(height: AppSpacing.md),
+            CupertinoListSection.insetGrouped(
+              backgroundColor: AppColors.background(isDark),
+              margin: EdgeInsets.zero,
+              children: [
+                CupertinoListTile(
+                  title: CupertinoTextField(
+                    controller: emailController,
+                    placeholder: 'Email',
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.done,
+                    prefix: const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: Icon(CupertinoIcons.mail, size: 20),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: null,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: AppSpacing.md),
+            sending
+                ? const Center(child: CupertinoActivityIndicator())
+                : SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton.filled(
+                      onPressed: _send,
+                      child: const Text('Send reset link'),
+                    ),
+                  ),
+          ],
+        ),
       ),
     );
   }

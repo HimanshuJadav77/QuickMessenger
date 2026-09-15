@@ -1,13 +1,18 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:QuickMessenger/features/chat/screens/main_navigation_screen.dart';
-import 'package:QuickMessenger/features/auth/screens/forgot_pass_screen.dart';
-import 'package:QuickMessenger/features/auth/screens/register_screen.dart';
-import 'package:QuickMessenger/core/widgets/app_dialogs.dart';
-import 'package:QuickMessenger/core/utils/networkcheck.dart';
-import '../../../core/widgets/elvb.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:quick_messenger/features/chat/screens/main_navigation_screen.dart';
+import 'package:quick_messenger/features/auth/screens/forgot_pass_screen.dart';
+import 'package:quick_messenger/features/auth/screens/register_screen.dart';
+import 'package:quick_messenger/core/utils/networkcheck.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/app_snackbar.dart';
 
+/// iOS-native Login.
+///
+/// - [CupertinoPageScaffold], [CupertinoTextField], [CupertinoButton.filled]
+/// - [CupertinoPageRoute] everywhere, [CupertinoAlertDialog] for verification
+/// - Firebase email/password logic unchanged.
 class Login extends StatefulWidget {
   const Login({super.key});
 
@@ -18,206 +23,185 @@ class Login extends StatefulWidget {
 class _LoginState extends State<Login> {
   final emailController = TextEditingController();
   final passController = TextEditingController();
-  final auth = FirebaseAuth.instance;
-  bool pass = false;
-  bool cpass = false;
-  bool loggedin = false;
+  bool showPass = false;
+  bool loggingIn = false;
 
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     NetworkCheck().initializeInternetStatus(context);
   }
 
   @override
   void dispose() {
-    // TODO: implement dispose
-    super.dispose();
+    emailController.dispose();
+    passController.dispose();
     NetworkCheck().cancelSubscription();
+    super.dispose();
   }
 
-  login(String email, String password) async {
+  Future<void> login(String email, String password) async {
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
-      if (FirebaseAuth.instance.currentUser!.emailVerified) {
+      await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && user.emailVerified) {
+        if (!mounted) return;
         Navigator.pushReplacement(
-          // ignore: use_build_context_synchronously
           context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => HomeScreen(),
-            // The page to navigate to
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              const begin = Offset(0.1, 0.0);
-              const end = Offset.zero;
-              var tween = Tween(begin: begin, end: end);
-              final offsetAnimation = animation.drive(tween);
-              return SlideTransition(
-                position: offsetAnimation,
-                child: child,
-              );
-            },
+          CupertinoPageRoute(builder: (_) => const HomeScreen()),
+        );
+      } else {
+        await user?.sendEmailVerification();
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+        showCupertinoDialog(
+          context: context,
+          builder: (ctx) => CupertinoAlertDialog(
+            title: const Text('Verify email'),
+            content: const Text(
+                'Your email is not verified. We sent a verification email — please verify it.'),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
           ),
         );
-        setState(() {
-          loggedin = false;
-        });
-      } else {
-        FirebaseAuth.instance.currentUser!.sendEmailVerification();
-        FirebaseAuth.instance.signOut();
-        // ignore: use_build_context_synchronously
-        showCustomDialog("Login", "Your email is not verified We send email on your mail please verify it.", context);
-        setState(() {
-          loggedin = false;
-        });
       }
     } on FirebaseAuthException catch (e) {
-      setState(() {
-        loggedin = false;
-      });
-      // ignore: use_build_context_synchronously
-      showSnackBar(context, "$e");
+      if (mounted) showSnackBar(context, e.message ?? e.toString());
+    } finally {
+      if (mounted) setState(() => loggingIn = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: ListView(
-        children: [
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                "Login",
-                style: TextStyle(fontSize: 35, fontFamily: "karsyu", fontWeight: FontWeight.w400, color: Colors.black),
-              ),
-            ],
-          ),
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Divider(
-              color: Colors.black,
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final accent = CupertinoTheme.of(context).primaryColor;
+
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('Log in'),
+      ),
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.all(AppSpacing.md),
+          children: [
+            SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              height: 220,
+              child: Image.asset("assets/images/login.png"),
             ),
-          ),
-          const SizedBox(
-            height: 20,
-          ),
-          SizedBox(
-            height: 300,
-            width: 300,
-            child: Image.asset("assets/images/login.png"),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextFormField(
-              controller: emailController,
-              keyboardType: TextInputType.text,
-              decoration: InputDecoration(
-                  label: const Text("Enter Email"),
-                  prefixIcon: const Icon(Icons.mail_outline),
-                  focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.blue), borderRadius: BorderRadius.circular(30)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30))),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextFormField(
-              controller: passController,
-              obscureText: !pass,
-              keyboardType: TextInputType.text,
-              decoration: InputDecoration(
-                  label: const Text("Enter Password"),
-                  suffixIcon: IconButton(
-                      onPressed: () {
-                        setState(() {
-                          pass = !pass;
-                        });
-                      },
-                      icon: Icon(pass ? Icons.visibility_outlined : Icons.visibility_off_outlined)),
-                  prefixIcon: const Icon(Icons.password_outlined),
-                  focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.blue), borderRadius: BorderRadius.circular(30)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30))),
-            ),
-          ),
-          const SizedBox(
-            height: 10,
-          ),
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => Forgotpass(),
-                  // The page to navigate to
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    const begin = Offset(3.0, 1.0);
-                    const end = Offset.zero;
-                    var tween = Tween(begin: begin, end: end);
-                    final offsetAnimation = animation.drive(tween);
-                    return SlideTransition(
-                      position: offsetAnimation,
-                      child: child,
-                    );
-                  },
+            SizedBox(height: AppSpacing.md),
+            CupertinoListSection.insetGrouped(
+              backgroundColor: AppColors.background(isDark),
+              margin: EdgeInsets.zero,
+              children: [
+                CupertinoListTile(
+                  title: CupertinoTextField(
+                    controller: emailController,
+                    placeholder: 'Email',
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    prefix: const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: Icon(CupertinoIcons.mail, size: 20),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: null,
+                  ),
                 ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.only(left: 275.0),
-              child: Text(
-                "Forgot Password?",
-                style: TextStyle(color: Colors.blue),
+                CupertinoListTile(
+                  title: CupertinoTextField(
+                    controller: passController,
+                    placeholder: 'Password',
+                    obscureText: !showPass,
+                    textInputAction: TextInputAction.done,
+                    prefix: const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: Icon(CupertinoIcons.lock, size: 20),
+                    ),
+                    suffix: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      onPressed: () =>
+                          setState(() => showPass = !showPass),
+                      child: Icon(
+                        showPass
+                            ? CupertinoIcons.eye
+                            : CupertinoIcons.eye_slash,
+                        size: 20,
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: null,
+                  ),
+                ),
+              ],
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: CupertinoButton(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                onPressed: () => Navigator.push(
+                  context,
+                  CupertinoPageRoute(builder: (_) => const Forgotpass()),
+                ),
+                child: const Text('Forgot Password?'),
               ),
             ),
-          ),
-          loggedin
-              ? const Center(
-                  child: SizedBox(
-                    height: 25,
-                    width: 25,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
+            SizedBox(height: AppSpacing.sm),
+            loggingIn
+                ? const Center(child: CupertinoActivityIndicator())
+                : SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton.filled(
+                      onPressed: () {
+                        if (emailController.text.trim().isNotEmpty &&
+                            passController.text.isNotEmpty) {
+                          setState(() => loggingIn = true);
+                          login(emailController.text.trim(),
+                              passController.text);
+                        } else {
+                          showSnackBar(
+                              context, 'Please fill all fields.');
+                        }
+                      },
+                      child: const Text('Log In'),
                     ),
                   ),
-                )
-              : Elvb(
-                  textsize: 17.0,
-                  heigth: 50.0,
-                  onpressed: () {
-                    if (emailController.text != "" && passController.text != "") {
-                      login(emailController.text, passController.text);
-                      setState(() {
-                        loggedin = true;
-                      });
-                    } else {
-                      showSnackBar(context, "Please Fill All TextBoxes.");
-                    }
-                  },
-                  name: "Login",
-                  foregroundcolor: Colors.white,
-                  backgroundcolor: Colors.blue),
-          const SizedBox(
-            height: 20,
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                "I have no any Account?",
-                style: TextStyle(fontSize: 17),
-              ),
-              TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    logregcontainer(const Register(), context);
-                  },
-                  child: const Text("Register", style: TextStyle(fontSize: 18, color: Colors.blue)))
-            ],
-          )
-        ],
+            SizedBox(height: AppSpacing.md),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  "Don't have an account?",
+                  style: TextStyle(
+                      color: AppColors.textSecondary(isDark)),
+                ),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: Size.zero,
+                  onPressed: () => Navigator.push(
+                    context,
+                    CupertinoPageRoute(
+                        builder: (_) => const Register()),
+                  ),
+                  child: Text(
+                    'Sign Up',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: accent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

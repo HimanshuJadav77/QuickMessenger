@@ -1,4 +1,5 @@
 import "package:flutter/material.dart";
+import "glass_dialog.dart";
 
 
 logregcontainer(child, BuildContext context) {
@@ -22,43 +23,12 @@ logregcontainer(child, BuildContext context) {
   );
 }
 
+
 showCustomDialog(String title, String content, BuildContext context) {
-  return showDialog(
+  return GlassDialog.showInfo(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: title != ""
-            ? Text(
-                title,
-                style: TextStyle(color: Colors.blue, fontSize: 20, fontWeight: FontWeight.bold),
-              )
-            : null,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        content: Text(
-          content,
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 15,
-          ),
-        ),
-        elevation: 10,
-        actions: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                  onPressed: () async {
-                    Navigator.pop(context);
-                  },
-                  child: const Text(
-                    "Ok",
-                    style: TextStyle(color: Colors.blue, fontSize: 18),
-                  )),
-            ],
-          )
-        ],
-      );
-    },
+    title: title,
+    message: content,
   );
 }
 

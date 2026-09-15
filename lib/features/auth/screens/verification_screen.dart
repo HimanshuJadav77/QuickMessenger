@@ -2,12 +2,16 @@
 
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:QuickMessenger/features/auth/screens/auth_gate_screen.dart';
-import 'package:QuickMessenger/core/widgets/elvb.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:quick_messenger/features/auth/screens/auth_gate_screen.dart';
+import 'package:quick_messenger/core/theme/app_colors.dart';
+import 'package:quick_messenger/core/theme/app_spacing.dart';
 
 import '../../chat/screens/main_navigation_screen.dart';
 
+/// iOS-native email verification gate.
+///
+/// Sends the link, polls for verification, then enters [HomeScreen].
 class Verification extends StatefulWidget {
   const Verification({super.key});
 
@@ -17,15 +21,18 @@ class Verification extends StatefulWidget {
 
 class _VerificationState extends State<Verification> {
   final _auth = FirebaseAuth.instance;
-  bool resend = false;
+  bool resending = false;
   Timer? timer;
-  bool isEmailVerified = FirebaseAuth.instance.currentUser!.emailVerified;
 
   @override
   void initState() {
     super.initState();
-    sendEmailVerification();
-    timer = Timer.periodic(const Duration(seconds: 1), (timer) => checkUserVerified());
+    Timer(
+      const Duration(seconds: 1),
+      () => _auth.currentUser?.sendEmailVerification(),
+    );
+    timer =
+        Timer.periodic(const Duration(seconds: 2), (_) => checkVerified());
   }
 
   @override
@@ -34,139 +41,105 @@ class _VerificationState extends State<Verification> {
     super.dispose();
   }
 
-  sendEmailVerification() {
-    Timer(
-      const Duration(seconds: 1),
-      () {
-        _auth.currentUser?.sendEmailVerification();
-      },
-    );
-  }
-
-  checkUserVerified() async {
+  Future<void> checkVerified() async {
     await _auth.currentUser?.reload();
-    setState(() {
-      isEmailVerified = FirebaseAuth.instance.currentUser!.emailVerified;
-    });
-    if (isEmailVerified) {
-      timer!.cancel();
+    final verified = FirebaseAuth.instance.currentUser?.emailVerified ?? false;
+    if (verified && mounted) {
+      timer?.cancel();
       Navigator.pushAndRemoveUntil(
         context,
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => HomeScreen(),
-          // The page to navigate to
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            const begin = Offset(2.0, 1.0);
-            const end = Offset.zero;
-            var tween = Tween(begin: begin, end: end);
-            final offsetAnimation = animation.drive(tween);
-            return SlideTransition(
-              position: offsetAnimation,
-              child: child,
-            );
-          },
-        ),
-        (Route<dynamic> route) => false, // This removes all previous routes
+        CupertinoPageRoute(builder: (_) => const HomeScreen()),
+        (_) => false,
+      );
+    }
+  }
+
+  Future<void> _resend() async {
+    setState(() => resending = true);
+    try {
+      await _auth.currentUser?.sendEmailVerification();
+    } finally {
+      if (mounted) {
+        Timer(const Duration(seconds: 5), () {
+          if (mounted) setState(() => resending = false);
+        });
+      }
+    }
+  }
+
+  Future<void> _cancel() async {
+    timer?.cancel();
+    try {
+      await _auth.currentUser?.delete();
+    } catch (_) {}
+    await _auth.signOut();
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        CupertinoPageRoute(builder: (_) => const LogReg()),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-            onPressed: () {
-              if (!isEmailVerified) {
-                _auth.signOut();
-                _auth.currentUser!.delete();
-              }
-              Navigator.pop(context);
-            },
-            icon: Icon(Icons.arrow_back_ios)),
-        title: const Text(
-          "Verification",
-          style: TextStyle(fontSize: 25, color: Colors.blue),
-        ),
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('Verify email'),
+        automaticallyImplyLeading: false,
       ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Text(
-              style: TextStyle(fontSize: 20),
-              textAlign: TextAlign.center,
-              "A Verification Link Send To Your Gmail Verify It.",
-            ),
-          ),
-          Row(
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(AppSpacing.lg),
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              !resend
-                  ? Elvb(
-                      textsize: 17.0,
-                      heigth: 50.0,
-                      width: 150.0,
-                      onpressed: () {
-                        _auth.currentUser!.sendEmailVerification();
-                        setState(() {
-                          resend = true;
-                        });
-                        Timer(
-                          const Duration(seconds: 5),
-                          () {
-                            setState(() {
-                              resend = false;
-                            });
-                          },
-                        );
-                      },
-                      name: "Resend",
-                      foregroundcolor: Colors.white,
-                      backgroundcolor: Colors.blue)
-                  : const Center(
-                      child: Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 5,
-                      ),
-                    )),
-              TextButton(
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  fixedSize: const Size(150, 50),
+              Icon(
+                CupertinoIcons.mail,
+                size: 72,
+                color: CupertinoTheme.of(context).primaryColor,
+              ),
+              SizedBox(height: AppSpacing.md),
+              const Text(
+                'Check your inbox',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
                 ),
-                onPressed: () {
-                  _auth.signOut();
-                  _auth.currentUser!.delete();
-                  Navigator.pushReplacement(
-                      context,
-                    PageRouteBuilder(
-                      pageBuilder: (context, animation, secondaryAnimation) => LogReg(),
-                      // The page to navigate to
-                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                        const begin = Offset(2.0, 1.0);
-                        const end = Offset.zero;
-                        var tween = Tween(begin: begin, end: end);
-                        final offsetAnimation = animation.drive(tween);
-                        return SlideTransition(
-                          position: offsetAnimation,
-                          child: child,
-                        );
-                      },
+              ),
+              SizedBox(height: AppSpacing.xs),
+              Text(
+                'A verification link was sent to your email. Tap it, then come back — we\'ll let you in automatically.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondary(isDark)),
+              ),
+              SizedBox(height: AppSpacing.lg),
+              const CupertinoActivityIndicator(),
+              SizedBox(height: AppSpacing.lg),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  resending
+                      ? const CupertinoActivityIndicator()
+                      : CupertinoButton(
+                          onPressed: _resend,
+                          child: const Text('Resend link'),
+                        ),
+                  CupertinoButton(
+                    onPressed: _cancel,
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                          color: CupertinoColors.systemRed),
                     ),
-                  );
-                },
-                child: const Text(
-                  "Cancel",
-                  style: TextStyle(color: Colors.blue, fontSize: 17),
-                ),
-              )
+                  ),
+                ],
+              ),
             ],
-          )
-        ],
+          ),
+        ),
       ),
     );
   }
