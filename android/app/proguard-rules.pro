@@ -1,4 +1,4 @@
-﻿# Flutter wrapper rules
+# Flutter wrapper rules
 -keep class io.flutter.app.** { *; }
 -keep class io.flutter.plugin.**  { *; }
 -keep class io.flutter.util.**  { *; }
@@ -20,6 +20,10 @@
 # SQLite / Sqflite
 -keep class com.tekartik.sqflite.** { *; }
 -dontwarn com.tekartik.sqflite.**
+
+# Flutter Local Notifications
+-keep class com.dexterous.flutterlocalnotifications.** { *; }
+-dontwarn com.dexterous.flutterlocalnotifications.**
 
 # Desugaring
 -dontwarn java.lang.invoke.**
