@@ -27,8 +27,7 @@ void showSnackBar(BuildContext context, String text) {
     // No ScaffoldMessenger (pure Cupertino) — fall through to overlay.
   }
 
-  final isDark =
-      CupertinoTheme.of(context).brightness == Brightness.dark;
+  final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
   final overlay = Overlay.of(context);
   final entry = OverlayEntry(
     builder: (ctx) => Positioned(
@@ -59,5 +58,9 @@ void showSnackBar(BuildContext context, String text) {
     ),
   );
   overlay.insert(entry);
-  Future.delayed(const Duration(seconds: 2), entry.remove);
+  Future.delayed(const Duration(seconds: 2), () {
+    if (entry.mounted) {
+      entry.remove();
+    }
+  });
 }

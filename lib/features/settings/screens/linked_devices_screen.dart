@@ -35,8 +35,7 @@ class LinkedDevicesScreen extends StatelessWidget {
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                  child: CupertinoActivityIndicator());
+              return const Center(child: CupertinoActivityIndicator());
             }
 
             final data = snapshot.data?.data() ?? {};
@@ -46,8 +45,8 @@ class LinkedDevicesScreen extends StatelessWidget {
             return ListView(
               children: [
                 Padding(
-                  padding: EdgeInsets.fromLTRB(AppSpacing.md,
-                      AppSpacing.md, AppSpacing.md, AppSpacing.xs),
+                  padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md,
+                      AppSpacing.md, AppSpacing.xs),
                   child: Text(
                     'ACTIVE SESSIONS'.toUpperCase(),
                     style: TextStyle(
@@ -60,47 +59,38 @@ class LinkedDevicesScreen extends StatelessWidget {
                 ),
                 CupertinoListSection.insetGrouped(
                   backgroundColor: AppColors.background(isDark),
-                  margin: EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm),
+                  margin: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                   children: [
                     CupertinoListTile(
-                      leading: Icon(
-                          CupertinoIcons.device_phone_portrait,
+                      leading: Icon(CupertinoIcons.device_phone_portrait,
                           color: accent),
                       title: const Text('This device'),
-                      subtitle: const Text(
-                          'Active now • QuickMessenger'),
+                      subtitle: const Text('Active now • QuickMessenger'),
                       trailing: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: CupertinoColors.systemGreen
                               .withValues(alpha: 0.15),
-                          borderRadius:
-                              BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
                           'Online',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color:
-                                CupertinoColors.systemGreen,
+                            color: CupertinoColors.systemGreen,
                           ),
                         ),
                       ),
                     ),
                     if (tokenCount > 1)
                       CupertinoListTile(
-                        leading: Icon(
-                            CupertinoIcons.device_phone_portrait,
+                        leading: Icon(CupertinoIcons.device_phone_portrait,
                             color: accent),
-                        title: Text(
-                            '$tokenCount registered devices'),
-                        subtitle: const Text(
-                            'Push notifications enabled'),
-                        trailing: Icon(
-                            CupertinoIcons.checkmark_circle,
+                        title: Text('$tokenCount registered devices'),
+                        subtitle: const Text('Push notifications enabled'),
+                        trailing: Icon(CupertinoIcons.checkmark_circle,
                             color: accent),
                       ),
                   ],

@@ -22,8 +22,7 @@ final currentUserIdProvider = Provider<String>((ref) {
 });
 
 /// Reactive UID stream for `ref.watch(...).when()` UI branches.
-final currentUserIdStreamProvider =
-    StreamProvider<String>((ref) {
+final currentUserIdStreamProvider = StreamProvider<String>((ref) {
   return FirebaseAuth.instance
       .authStateChanges()
       .map((user) => user?.uid ?? '');

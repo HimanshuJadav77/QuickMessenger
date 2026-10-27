@@ -1,248 +1,208 @@
-import "package:flutter/material.dart";
-import "glass_dialog.dart";
+import 'package:flutter/cupertino.dart';
 
-
-logregcontainer(child, BuildContext context) {
-  return showBottomSheet(
-    sheetAnimationStyle: AnimationStyle(duration: const Duration(milliseconds: 700)),
-    enableDrag: true,
-    showDragHandle: true,
-    elevation: 20,
-    backgroundColor: Colors.white,
+/// iOS-native log/register bottom sheet using CupertinoActionSheet.
+/// Replaces the legacy Material `showBottomSheet` wrapper.
+Future<void> logregcontainer(Widget child, BuildContext context) {
+  return showCupertinoModalPopup(
     context: context,
-    builder: (context) {
-      return SingleChildScrollView(
-        physics: PageScrollPhysics(),
-        child: SizedBox(
-          height: double.maxFinite,
-          width: double.maxFinite,
-          child: child,
-        ),
-      );
-    },
+    builder: (context) => CupertinoActionSheet(
+      message: child,
+      cancelButton: CupertinoActionSheetAction(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+    ),
   );
 }
 
-
-showCustomDialog(String title, String content, BuildContext context) {
-  return GlassDialog.showInfo(
+/// iOS-native info dialog using [CupertinoAlertDialog].
+/// Replaces the legacy `showCustomDialog` Material AlertDialog.
+Future<void> showCustomDialog(
+    String title, String content, BuildContext context) {
+  return showCupertinoDialog(
     context: context,
-    title: title,
-    message: content,
+    builder: (context) => CupertinoAlertDialog(
+      title: title.isNotEmpty ? Text(title) : null,
+      content: Text(content),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
   );
 }
 
-showPickerDialog(String title, VoidCallback camera, VoidCallback gallary, BuildContext context) {
-  return showDialog(
+/// iOS-native photo picker action sheet using [CupertinoActionSheet].
+/// Replaces the legacy Material AlertDialog-based picker.
+Future<void> showPickerDialog(String title, VoidCallback camera,
+    VoidCallback gallery, BuildContext context) {
+  return showCupertinoModalPopup(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: Row(
-          children: [
-            Text(
-              title,
-              style: TextStyle(color: Colors.blue, fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(
-              width: 120,
-            ),
-            IconButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                icon: Icon(Icons.close))
-          ],
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        elevation: 10,
-        actions: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+    builder: (context) => CupertinoActionSheet(
+      title: Text(title),
+      actions: [
+        CupertinoActionSheetAction(
+          onPressed: () {
+            Navigator.pop(context);
+            camera();
+          },
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              IconButton.outlined(
-                onPressed: camera,
-                icon: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Icon(Icons.camera_alt_outlined),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Text("Camera"),
-                    )
-                  ],
-                ),
-              ),
-              IconButton.outlined(
-                onPressed: gallary,
-                icon: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Icon(Icons.photo_library_outlined),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Text("Gallery"),
-                    )
-                  ],
-                ),
-              )
+              Icon(CupertinoIcons.camera, size: 22),
+              SizedBox(width: 8),
+              Text('Camera'),
             ],
-          )
-        ],
-      );
-    },
-  );
-}
-
-profileVisibility(BuildContext context, dropDownVal, onChanged, VoidCallback onPressed) {
-  return showDialog(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: Text(
-          "Privacy",
-          style: TextStyle(color: Colors.blue, fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        content: Row(
-          children: [
-            Text(
-              "Account Visibility",
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 15,
-              ),
-            ),
-            DropdownButton<String>(
-              value: dropDownVal,
-              items: ["Public", "Private"].map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              onChanged: onChanged,
-            ),
-          ],
-        ),
-        elevation: 10,
-        actions: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                  onPressed: onPressed,
-                  child: Text(
-                    "Confirm",
-                    style: TextStyle(color: Colors.blue, fontSize: 16),
-                  )),
-            ],
-          )
-        ],
-      );
-    },
-  );
-}
-
-showMessageBox(String title, String content, BuildContext context, buttonName, VoidCallback onPressed) {
-  return showDialog(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: Text(
-          title,
-          style: TextStyle(
-              color: title == "Deletion" || title == "Block" ? Colors.red : Colors.blue,
-              fontSize: 20,
-              fontWeight: FontWeight.bold),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        content: Text(
-          content,
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 15,
           ),
         ),
-        elevation: 10,
-        actions: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+        CupertinoActionSheetAction(
+          onPressed: () {
+            Navigator.pop(context);
+            gallery();
+          },
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextButton(
-                  onPressed: () async {
-                    Navigator.pop(context);
-                  },
-                  child: const Text(
-                    "Cancel",
-                    style: TextStyle(color: Colors.blue, fontSize: 16),
-                  )),
-              TextButton(
-                  onPressed: onPressed,
-                  child: Text(
-                    buttonName,
-                    style: TextStyle(
-                        color: buttonName == "Delete" || buttonName == "Block" ? Colors.red : Colors.blue,
-                        fontSize: 16),
-                  )),
+              Icon(CupertinoIcons.photo, size: 22),
+              SizedBox(width: 8),
+              Text('Photo Library'),
             ],
-          )
-        ],
-      );
-    },
+          ),
+        ),
+      ],
+      cancelButton: CupertinoActionSheetAction(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+    ),
   );
 }
 
-showDeleteChatBox(
-    String title, String content, BuildContext context, VoidCallback deleteForEveryone, VoidCallback deleteForMe) {
-  return showDialog(
+/// iOS-native privacy settings dialog using [CupertinoAlertDialog] with [CupertinoSegmentedControl].
+/// Replaces the legacy Material AlertDialog with DropdownButton.
+Future<void> profileVisibility(BuildContext context, String dropDownVal,
+    ValueChanged<String?> onChanged, VoidCallback onPressed) {
+  return showCupertinoDialog(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: Text(
-          title,
-          style: TextStyle(color: Colors.blue, fontSize: 20, fontWeight: FontWeight.bold),
+    builder: (context) => CupertinoAlertDialog(
+      title: const Text('Privacy'),
+      content: Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: CupertinoSegmentedControl<String>(
+          children: const {
+            'Public': Text('Public'),
+            'Private': Text('Private'),
+          },
+          groupValue: dropDownVal,
+          onValueChanged: onChanged,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              content,
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 15,
-              ),
+      ),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        CupertinoDialogAction(
+          isDefaultAction: true,
+          onPressed: () {
+            Navigator.pop(context);
+            onPressed();
+          },
+          child: const Text('Confirm'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// iOS-native confirmation dialog using [CupertinoAlertDialog].
+/// Replaces the legacy `showMessageBox` Material AlertDialog.
+Future<void> showMessageBox(String title, String content, BuildContext context,
+    String buttonName, VoidCallback onPressed) {
+  final bool isDestructive = buttonName == 'Delete' || buttonName == 'Block';
+
+  return showCupertinoDialog(
+    context: context,
+    builder: (context) => CupertinoAlertDialog(
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isDestructive
+              ? CupertinoColors.systemRed
+              : (CupertinoTheme.of(context).brightness == Brightness.dark
+                  ? CupertinoColors.white
+                  : CupertinoColors.black),
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      content: Text(content, style: const TextStyle(fontSize: 15)),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        CupertinoDialogAction(
+          isDestructiveAction: isDestructive,
+          onPressed: () {
+            Navigator.pop(context);
+            onPressed();
+          },
+          child: Text(
+            buttonName,
+            style: TextStyle(
+              color: isDestructive
+                  ? CupertinoColors.systemRed
+                  : (CupertinoTheme.of(context).brightness == Brightness.dark
+                      ? CupertinoColors.white
+                      : CupertinoColors.black),
+              fontSize: 16,
             ),
-            Padding(
-              padding: EdgeInsets.all(10.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                        onPressed: deleteForEveryone,
-                        child: const Text(
-                          "Delete for everyone",
-                          style: TextStyle(color: Colors.red, fontSize: 16),
-                        )),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                        onPressed: deleteForMe,
-                        child: const Text(
-                          "Delete for me",
-                          style: TextStyle(color: Colors.red, fontSize: 16),
-                        )),
-                  ),
-                ],
-              ),
-            )
-          ],
+          ),
         ),
-        elevation: 10,
-      );
-    },
+      ],
+    ),
+  );
+}
+
+/// iOS-native delete confirmation dialog using [CupertinoAlertDialog].
+/// Replaces the legacy `showDeleteChatBox` Material AlertDialog.
+Future<void> showDeleteChatBox(
+  String title,
+  String content,
+  BuildContext context,
+  VoidCallback deleteForEveryone,
+  VoidCallback deleteForMe,
+) {
+  return showCupertinoDialog(
+    context: context,
+    builder: (context) => CupertinoAlertDialog(
+      title: Text(title),
+      content: Text(content),
+      actions: [
+        CupertinoDialogAction(
+          isDestructiveAction: true,
+          onPressed: () {
+            Navigator.pop(context);
+            deleteForEveryone();
+          },
+          child: const Text('Delete for everyone'),
+        ),
+        CupertinoDialogAction(
+          isDestructiveAction: true,
+          onPressed: () {
+            Navigator.pop(context);
+            deleteForMe();
+          },
+          child: const Text('Delete for me'),
+        ),
+        CupertinoDialogAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    ),
   );
 }

@@ -64,8 +64,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '85470283732',
     projectId: 'it-material-point-2b732',
     storageBucket: 'it-material-point-2b732.appspot.com',
-    androidClientId: '85470283732-bjr456hcaccp6v59foq5lr9ab8hjmpap.apps.googleusercontent.com',
-    iosClientId: '85470283732-paivjb9fhraqusspb3d448av5u4gcukj.apps.googleusercontent.com',
+    androidClientId:
+        '85470283732-bjr456hcaccp6v59foq5lr9ab8hjmpap.apps.googleusercontent.com',
+    iosClientId:
+        '85470283732-paivjb9fhraqusspb3d448av5u4gcukj.apps.googleusercontent.com',
     iosBundleId: 'com.example.quickmsg',
   );
 
@@ -75,8 +77,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '85470283732',
     projectId: 'it-material-point-2b732',
     storageBucket: 'it-material-point-2b732.appspot.com',
-    androidClientId: '85470283732-bjr456hcaccp6v59foq5lr9ab8hjmpap.apps.googleusercontent.com',
-    iosClientId: '85470283732-paivjb9fhraqusspb3d448av5u4gcukj.apps.googleusercontent.com',
+    androidClientId:
+        '85470283732-bjr456hcaccp6v59foq5lr9ab8hjmpap.apps.googleusercontent.com',
+    iosClientId:
+        '85470283732-paivjb9fhraqusspb3d448av5u4gcukj.apps.googleusercontent.com',
     iosBundleId: 'com.example.quickmsg',
   );
 
@@ -89,5 +93,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'it-material-point-2b732.appspot.com',
     measurementId: 'G-CBWJNZPP41',
   );
-
 }

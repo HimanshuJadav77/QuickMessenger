@@ -39,8 +39,7 @@ class _ForgotpassState extends State<Forgotpass> {
         context: context,
         builder: (ctx) => CupertinoAlertDialog(
           title: const Text('Reset email sent'),
-          content: const Text(
-              'Check your mail app for the reset link.'),
+          content: const Text('Check your mail app for the reset link.'),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.pop(ctx),

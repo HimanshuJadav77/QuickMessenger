@@ -6,6 +6,7 @@ import 'package:quick_messenger/core/theme/app_colors.dart';
 import 'package:quick_messenger/core/theme/app_spacing.dart';
 import 'package:quick_messenger/features/chat/screens/chat_screen.dart';
 import 'package:quick_messenger/features/chat/screens/group_chat_screen.dart';
+import 'package:quick_messenger/core/widgets/user_avatar.dart';
 
 /// iOS-native message search (local SQLite LIKE search).
 ///
@@ -103,8 +104,8 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
         child: Column(
           children: [
             Padding(
-              padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.xs,
-                  AppSpacing.md, AppSpacing.xs),
+              padding: EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.xs, AppSpacing.md, AppSpacing.xs),
               child: CupertinoSearchTextField(
                 controller: _searchController,
                 placeholder: 'Search messages',
@@ -125,14 +126,12 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(CupertinoIcons.search,
-                                  size: 44,
-                                  color: AppColors.textMuted(isDark)),
+                                  size: 44, color: AppColors.textMuted(isDark)),
                               SizedBox(height: AppSpacing.sm),
                               Text(
                                 'No messages found',
                                 style: TextStyle(
-                                    color: AppColors.textSecondary(
-                                        isDark)),
+                                    color: AppColors.textSecondary(isDark)),
                               ),
                             ],
                           ),
@@ -142,57 +141,41 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                               child: Text(
                                 'Search across all chats and groups',
                                 style: TextStyle(
-                                    color:
-                                        AppColors.textMuted(isDark)),
+                                    color: AppColors.textMuted(isDark)),
                               ),
                             )
                           : CupertinoListSection.insetGrouped(
-                              backgroundColor:
-                                  AppColors.background(isDark),
+                              backgroundColor: AppColors.background(isDark),
                               margin: EdgeInsets.symmetric(
                                   horizontal: AppSpacing.sm),
                               children: _searchResults.map((result) {
-                                final text =
-                                    (result['text'] ?? '').toString();
+                                final text = (result['text'] ?? '').toString();
                                 final chatName =
                                     (result['chat_name'] ?? 'Unknown')
                                         .toString();
-                                final isGroup =
-                                    result['chat_type'] == 'group';
+                                final isGroup = result['chat_type'] == 'group';
                                 final timestamp =
-                                    (result['client_created_at'] ??
-                                            '')
+                                    (result['client_created_at'] ?? '')
                                         .toString();
 
                                 String formattedTime = '';
                                 if (timestamp.isNotEmpty) {
                                   try {
-                                    final dt =
-                                        DateTime.parse(timestamp);
+                                    final dt = DateTime.parse(timestamp);
                                     formattedTime =
                                         "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
                                   } catch (_) {}
                                 }
 
                                 return CupertinoListTile(
-                                  leading: Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: CupertinoTheme.of(context)
-                                          .primaryColor
-                                          .withValues(alpha: 0.15),
-                                    ),
-                                    child: Icon(
-                                      isGroup
-                                          ? CupertinoIcons.group
-                                          : CupertinoIcons
-                                              .person,
-                                      color: CupertinoTheme.of(context)
-                                          .primaryColor,
-                                      size: 22,
-                                    ),
+                                  padding: AppSpacing.listTilePadding,
+                                  leadingSize: AppSpacing.listTileLeadingSize,
+                                  leadingToTitle:
+                                      AppSpacing.listTileLeadingToTitle,
+                                  leading: UserAvatar(
+                                    username: chatName,
+                                    imageUrl: result['chat_image'] as String?,
+                                    radius: AppAvatarSize.listTile,
                                   ),
                                   title: Text(
                                     chatName,
@@ -205,17 +188,14 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   trailing: Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.end,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
                                         formattedTime,
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: AppColors.textMuted(
-                                              isDark),
+                                          color: AppColors.textMuted(isDark),
                                         ),
                                       ),
                                       if (isGroup)
@@ -224,15 +204,13 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.w600,
-                                            color: CupertinoTheme.of(
-                                                    context)
+                                            color: CupertinoTheme.of(context)
                                                 .primaryColor,
                                           ),
                                         ),
                                     ],
                                   ),
-                                  onTap: () =>
-                                      _navigateToChat(result),
+                                  onTap: () => _navigateToChat(result),
                                 );
                               }).toList(),
                             ),

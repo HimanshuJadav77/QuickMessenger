@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 import 'package:quick_messenger/core/widgets/liquid_glass_container.dart';
@@ -59,7 +60,7 @@ class _GlassTileState extends State<GlassTile> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = AppColors.isDarkMode(context);
 
     return AnimatedScale(
       scale: _isPressed ? 0.97 : 1.0,
@@ -73,9 +74,14 @@ class _GlassTileState extends State<GlassTile> {
         behavior: HitTestBehavior.opaque,
         child: LiquidGlassContainer(
           level: 1,
-          accentTint: _isPressed ? (isDark ? Colors.white : Colors.black) : null,
-          margin: widget.margin ?? EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
-          padding: widget.padding ?? EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+          accentTint:
+              _isPressed ? (isDark ? Colors.white : Colors.black) : null,
+          margin: widget.margin ??
+              EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+          padding: widget.padding ??
+              EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md, vertical: AppSpacing.sm),
           child: Row(
             children: [
               widget.leading,
@@ -156,7 +162,7 @@ class _GlassButtonState extends State<GlassButton> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = AppColors.isDarkMode(context);
 
     return AnimatedScale(
       scale: _isPressed ? 0.96 : 1.0,
@@ -169,11 +175,13 @@ class _GlassButtonState extends State<GlassButton> {
         behavior: HitTestBehavior.opaque,
         child: LiquidGlassContainer(
           level: 1,
-          accentTint: _isPressed 
-              ? (isDark ? Colors.white : Colors.black) 
+          accentTint: _isPressed
+              ? (isDark ? Colors.white : Colors.black)
               : widget.backgroundColor,
           margin: widget.margin,
-          padding: widget.padding ?? EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+          padding: widget.padding ??
+              EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg, vertical: AppSpacing.md),
           customRadius: widget.borderRadius,
           child: widget.child,
         ),

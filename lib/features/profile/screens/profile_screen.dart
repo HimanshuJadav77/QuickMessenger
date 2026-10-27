@@ -7,11 +7,16 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:quick_messenger/core/database/local_database_helper.dart';
 import 'package:quick_messenger/core/providers/auth_providers.dart';
 import 'package:quick_messenger/core/theme/app_colors.dart';
 import 'package:quick_messenger/core/theme/app_spacing.dart';
 import 'package:quick_messenger/core/widgets/app_snackbar.dart';
 import 'package:quick_messenger/core/widgets/glass_action_sheet.dart';
+import 'package:quick_messenger/core/widgets/user_avatar.dart';
+import 'package:quick_messenger/core/services/avatar_cache_service.dart';
+import 'package:quick_messenger/core/services/drive_service.dart';
 import 'package:quick_messenger/features/settings/screens/settings_screen.dart';
 import 'package:quick_messenger/features/profile/screens/followers_following_screen.dart';
 
@@ -33,6 +38,7 @@ class _MyProfileState extends ConsumerState<MyProfile> {
   File? pickedImage;
   bool modifyUsername = false;
   bool modifyAbout = false;
+  bool _isSaving = false;
   final TextEditingController usernameC = TextEditingController();
   final TextEditingController aboutC = TextEditingController();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -45,6 +51,7 @@ class _MyProfileState extends ConsumerState<MyProfile> {
   }
 
   Future<void> updateProfile(String uid) async {
+    if (_isSaving) return;
     final newUsername = usernameC.text.trim();
     final newAbout = aboutC.text.trim();
 
@@ -52,6 +59,8 @@ class _MyProfileState extends ConsumerState<MyProfile> {
       showSnackBar(context, "Username cannot be empty");
       return;
     }
+
+    setState(() => _isSaving = true);
 
     try {
       final updates = <String, dynamic>{};
@@ -66,6 +75,11 @@ class _MyProfileState extends ConsumerState<MyProfile> {
           return;
         }
         updates["username"] = newUsername;
+        updates["username_lower"] = newUsername.toLowerCase();
+        try {
+          await FirebaseAuth.instance.currentUser
+              ?.updateDisplayName(newUsername);
+        } catch (_) {}
       }
 
       if (modifyAbout) {
@@ -73,18 +87,60 @@ class _MyProfileState extends ConsumerState<MyProfile> {
       }
 
       if (pickedImage != null) {
-        final ref = FirebaseStorage.instance
-            .ref()
-            .child("profile_images")
-            .child("$uid.jpg");
-        await ref.putFile(pickedImage!);
-        final imageUrl = await ref.getDownloadURL();
-        updates["userimageurl"] = imageUrl;
-        updates["imageurl"] = imageUrl;
+        String? imageUrl;
+        try {
+          final ref = FirebaseStorage.instance
+              .ref()
+              .child("profile_images")
+              .child("$uid.jpg");
+          await ref.putFile(
+            pickedImage!,
+            SettableMetadata(contentType: "image/jpeg"),
+          );
+          imageUrl = await ref.getDownloadURL();
+        } catch (storageError) {
+          debugPrint(
+              "[Profile] Firebase Storage failed: $storageError. Trying Drive...");
+          final upload = await DriveService.instance.uploadMediaFile(
+            file: pickedImage!,
+            fileName: "profile_$uid.jpg",
+            mimeType: "image/jpeg",
+          );
+          if (upload != null && upload['driveFileId'] != null) {
+            final driveId = upload['driveFileId'] as String;
+            imageUrl = 'https://lh3.googleusercontent.com/d/$driveId';
+          } else {
+            imageUrl = upload?['fileUrl'] as String?;
+          }
+        }
+        if (imageUrl != null && imageUrl.isNotEmpty) {
+          updates["userimageurl"] = imageUrl;
+          updates["imageurl"] = imageUrl;
+          try {
+            await FirebaseAuth.instance.currentUser?.updatePhotoURL(imageUrl);
+          } catch (_) {}
+        } else {
+          throw Exception(
+              "Failed to upload photo. Please check your network connection and try again.");
+        }
       }
 
       if (updates.isNotEmpty) {
+        if (updates.containsKey('userimageurl')) {
+          await AvatarCacheService.instance.invalidateUser(uid);
+        }
+        updates["updatedAt"] = FieldValue.serverTimestamp();
         await _firestore.collection("Users").doc(uid).update(updates);
+
+        // Update local database profile cache immediately
+        await LocalDatabaseHelper.instance.upsertUserProfile(uid, uid, {
+          if (updates.containsKey('username')) 'username': updates['username'],
+          if (updates.containsKey('username'))
+            'display_name': updates['username'],
+          if (updates.containsKey('about')) 'about': updates['about'],
+          if (updates.containsKey('imageurl')) 'image_url': updates['imageurl'],
+          'last_updated': DateTime.now().toIso8601String(),
+        });
       }
 
       if (mounted) {
@@ -96,9 +152,13 @@ class _MyProfileState extends ConsumerState<MyProfile> {
         showSnackBar(context, "Profile updated");
       }
     } on FirebaseException catch (e) {
-      if (mounted) showSnackBar(context, "$e");
+      if (mounted) showSnackBar(context, e.message ?? e.toString());
     } catch (e) {
       if (mounted) showSnackBar(context, "$e");
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -112,8 +172,8 @@ class _MyProfileState extends ConsumerState<MyProfile> {
           icon: CupertinoIcons.camera_fill,
           onPressed: () async {
             try {
-              final photo = await ImagePicker()
-                  .pickImage(source: ImageSource.camera);
+              final photo =
+                  await ImagePicker().pickImage(source: ImageSource.camera);
               if (photo != null && mounted) {
                 setState(() => pickedImage = File(photo.path));
               }
@@ -127,8 +187,8 @@ class _MyProfileState extends ConsumerState<MyProfile> {
           icon: CupertinoIcons.photo_fill,
           onPressed: () async {
             try {
-              final photo = await ImagePicker()
-                  .pickImage(source: ImageSource.gallery);
+              final photo =
+                  await ImagePicker().pickImage(source: ImageSource.gallery);
               if (photo != null && mounted) {
                 setState(() => pickedImage = File(photo.path));
               }
@@ -159,12 +219,10 @@ class _MyProfileState extends ConsumerState<MyProfile> {
       );
     }
 
-    final isEditing =
-        pickedImage != null || modifyAbout || modifyUsername;
+    final isEditing = pickedImage != null || modifyAbout || modifyUsername;
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream:
-          _firestore.collection("Users").doc(userid).snapshots(),
+      stream: _firestore.collection("Users").doc(userid).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting ||
             !snapshot.hasData ||
@@ -177,8 +235,14 @@ class _MyProfileState extends ConsumerState<MyProfile> {
 
         final data = snapshot.data!.data()!;
         final username = (data["username"] ?? 'User').toString();
-        final imageurl = (data["userimageurl"] ?? '').toString();
-        final email = (data["email"] ?? '').toString();
+        final imageurl = (data["userimageurl"] ??
+                data["imageurl"] ??
+                FirebaseAuth.instance.currentUser?.photoURL ??
+                '')
+            .toString();
+        final email =
+            (data["email"] ?? FirebaseAuth.instance.currentUser?.email ?? '')
+                .toString();
         final about = (data["about"] ?? '').toString();
 
         return CupertinoPageScaffold(
@@ -193,28 +257,31 @@ class _MyProfileState extends ConsumerState<MyProfile> {
                     children: [
                       CupertinoButton(
                         padding: EdgeInsets.zero,
-                        onPressed: () => setState(() {
-                          pickedImage = null;
-                          modifyAbout = false;
-                          modifyUsername = false;
-                        }),
+                        onPressed: _isSaving
+                            ? null
+                            : () => setState(() {
+                                  pickedImage = null;
+                                  modifyAbout = false;
+                                  modifyUsername = false;
+                                }),
                         child: const Text(
                           'Cancel',
-                          style: TextStyle(
-                              color: CupertinoColors.systemRed),
+                          style: TextStyle(color: CupertinoColors.systemRed),
                         ),
                       ),
                       CupertinoButton(
-                        padding:
-                            const EdgeInsets.only(left: 12),
-                        onPressed: () => updateProfile(userid),
-                        child: Text(
-                          'Save',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: accent,
-                          ),
-                        ),
+                        padding: const EdgeInsets.only(left: 12),
+                        onPressed:
+                            _isSaving ? null : () => updateProfile(userid),
+                        child: _isSaving
+                            ? const CupertinoActivityIndicator(radius: 10)
+                            : Text(
+                                'Save',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: accent,
+                                ),
+                              ),
                       ),
                     ],
                   )
@@ -232,7 +299,10 @@ class _MyProfileState extends ConsumerState<MyProfile> {
                         ],
                       );
                     },
-                    child: const Icon(CupertinoIcons.ellipsis_circle),
+                    child: Icon(
+                      CupertinoIcons.ellipsis_circle,
+                      color: AppColors.textPrimary(isDark),
+                    ),
                   ),
             border: Border(
               bottom: BorderSide(
@@ -254,56 +324,23 @@ class _MyProfileState extends ConsumerState<MyProfile> {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          Container(
-                            width: 110,
-                            height: 110,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: imageurl.isEmpty && pickedImage == null
-                                  ? accent.withValues(alpha: 0.15)
-                                  : null,
-                              image: pickedImage != null
-                                  ? DecorationImage(
-                                      image: FileImage(pickedImage!),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : (imageurl.isNotEmpty
-                                      ? DecorationImage(
-                                          image: NetworkImage(imageurl),
-                                          fit: BoxFit.cover,
-                                          onError: (_, __) {},
-                                        )
-                                      : null),
-                              border: Border.all(
-                                color: AppColors.divider(isDark),
-                                width: 0.5,
-                              ),
-                            ),
-                            child: (pickedImage == null &&
-                                    imageurl.isEmpty)
-                                ? Center(
-                                    child: Text(
-                                      username.isNotEmpty
-                                          ? username[0].toUpperCase()
-                                          : '?',
-                                      style: TextStyle(
-                                        fontSize: 40,
-                                        fontWeight: FontWeight.w600,
-                                        color: accent,
-                                      ),
-                                    ),
-                                  )
-                                : null,
+                          UserAvatar(
+                            username: username,
+                            seed: userid,
+                            imageUrl: pickedImage != null
+                                ? pickedImage!.path
+                                : imageurl,
+                            radius: AppAvatarSize.profileHero,
                           ),
                           Positioned(
-                            bottom: -2,
-                            right: -2,
+                            bottom: 0,
+                            right: 0,
                             child: CupertinoButton(
                               padding: EdgeInsets.zero,
                               onPressed: _showPhotoPicker,
                               child: Container(
-                                width: 34,
-                                height: 34,
+                                width: 32,
+                                height: 32,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: accent,
@@ -312,10 +349,10 @@ class _MyProfileState extends ConsumerState<MyProfile> {
                                     width: 2,
                                   ),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   CupertinoIcons.camera_fill,
-                                  color: CupertinoColors.white,
-                                  size: 17,
+                                  color: AppColors.onPrimary(isDark, accent),
+                                  size: 16,
                                 ),
                               ),
                             ),
@@ -329,13 +366,11 @@ class _MyProfileState extends ConsumerState<MyProfile> {
                         onPressed: () => Navigator.push(
                           context,
                           CupertinoPageRoute(
-                            builder: (_) =>
-                                FollowFollowingPage(userid: userid),
+                            builder: (_) => FollowFollowingPage(userid: userid),
                           ),
                         ),
                         child: Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceEvenly,
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             _CountColumn(
                               label: 'Followers',
@@ -370,8 +405,7 @@ class _MyProfileState extends ConsumerState<MyProfile> {
                   header: const Text('PROFILE'),
                   children: [
                     CupertinoListTile(
-                      leading: Icon(CupertinoIcons.person,
-                          color: accent),
+                      leading: Icon(CupertinoIcons.person, color: accent),
                       title: const Text('Username'),
                       subtitle: modifyUsername
                           ? CupertinoTextField(
@@ -395,14 +429,12 @@ class _MyProfileState extends ConsumerState<MyProfile> {
                             ),
                     ),
                     CupertinoListTile(
-                      leading:
-                          Icon(CupertinoIcons.mail, color: accent),
+                      leading: Icon(CupertinoIcons.mail, color: accent),
                       title: const Text('Email'),
                       subtitle: Text(email),
                     ),
                     CupertinoListTile(
-                      leading: Icon(CupertinoIcons.info_circle,
-                          color: accent),
+                      leading: Icon(CupertinoIcons.info_circle, color: accent),
                       title: const Text('About'),
                       subtitle: modifyAbout
                           ? CupertinoTextField(
@@ -416,8 +448,7 @@ class _MyProfileState extends ConsumerState<MyProfile> {
                               about.isEmpty ? 'Add a bio' : about,
                               style: about.isEmpty
                                   ? TextStyle(
-                                      color:
-                                          AppColors.textMuted(isDark))
+                                      color: AppColors.textMuted(isDark))
                                   : null,
                             ),
                       trailing: modifyAbout

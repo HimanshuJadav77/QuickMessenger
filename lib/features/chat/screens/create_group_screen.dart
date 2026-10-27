@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'package:quick_messenger/core/theme/app_colors.dart';
 import 'package:quick_messenger/core/theme/app_spacing.dart';
 import 'package:quick_messenger/core/widgets/app_snackbar.dart';
+import 'package:quick_messenger/core/widgets/user_avatar.dart';
 import '../providers/chat_provider.dart';
 
 /// iOS-native group creation.
@@ -17,8 +18,7 @@ class CreateGroupScreen extends ConsumerStatefulWidget {
   const CreateGroupScreen({super.key});
 
   @override
-  ConsumerState<CreateGroupScreen> createState() =>
-      _CreateGroupScreenState();
+  ConsumerState<CreateGroupScreen> createState() => _CreateGroupScreenState();
 }
 
 class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
@@ -70,8 +70,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
     final accent = CupertinoTheme.of(context).primaryColor;
-    final currentUserId =
-        FirebaseAuth.instance.currentUser?.uid ?? '';
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
@@ -106,8 +105,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
             CupertinoListSection.insetGrouped(
               backgroundColor: AppColors.background(isDark),
               header: const Text('DETAILS'),
-              margin:
-                  EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+              margin: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
               children: [
                 CupertinoListTile(
                   title: CupertinoTextField(
@@ -131,8 +129,8 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
             ),
             if (_selectedMembers.isNotEmpty) ...[
               Padding(
-                padding: EdgeInsets.fromLTRB(AppSpacing.md,
-                    AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
+                padding: EdgeInsets.fromLTRB(
+                    AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
                 child: Text(
                   'SELECTED (${_selectedMembers.length})'.toUpperCase(),
                   style: TextStyle(
@@ -147,43 +145,28 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                 height: 76,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md),
+                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
                   itemCount: _selectedMembers.length,
                   itemBuilder: (context, index) {
                     final member = _selectedMembers[index];
-                    final username =
-                        (member['username'] ?? 'User').toString();
+                    final username = (member['username'] ?? 'User').toString();
+                    final imageUrl =
+                        (member['imageurl'] ?? member['imageUrl'] ?? '')
+                            .toString();
                     return Padding(
-                      padding:
-                          EdgeInsets.only(right: AppSpacing.sm),
+                      padding: EdgeInsets.only(right: AppSpacing.sm),
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
                           Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: accent.withValues(
-                                      alpha: 0.15),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    username.isNotEmpty
-                                        ? username[0]
-                                            .toUpperCase()
-                                        : '?',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: accent,
-                                    ),
-                                  ),
-                                ),
+                              UserAvatar(
+                                username: username,
+                                imageUrl: imageUrl,
+                                radius: AppAvatarSize.chip,
                               ),
+                              const SizedBox(height: 4),
                               SizedBox(
                                 width: 56,
                                 child: Text(
@@ -193,8 +176,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: AppColors.textSecondary(
-                                        isDark),
+                                    color: AppColors.textSecondary(isDark),
                                   ),
                                 ),
                               ),
@@ -204,16 +186,14 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                             right: -2,
                             top: -2,
                             child: GestureDetector(
-                              onTap: () => setState(() =>
-                                  _selectedMembers
-                                      .removeAt(index)),
+                              onTap: () => setState(
+                                  () => _selectedMembers.removeAt(index)),
                               child: Container(
                                 width: 20,
                                 height: 20,
                                 decoration: const BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color:
-                                      CupertinoColors.systemRed,
+                                  color: CupertinoColors.systemRed,
                                 ),
                                 child: const Icon(
                                   CupertinoIcons.clear,
@@ -231,8 +211,8 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
               ),
             ],
             Padding(
-              padding: EdgeInsets.fromLTRB(AppSpacing.md,
-                  AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
+              padding: EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
               child: Text(
                 'ADD MEMBERS'.toUpperCase(),
                 style: TextStyle(
@@ -251,12 +231,10 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                   .where('following', isEqualTo: true)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState ==
-                    ConnectionState.waiting) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const SizedBox(
                     height: 120,
-                    child: Center(
-                        child: CupertinoActivityIndicator()),
+                    child: Center(child: CupertinoActivityIndicator()),
                   );
                 }
 
@@ -268,19 +246,15 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                       child: Text(
                         'Follow people first to add them to groups.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color:
-                                AppColors.textMuted(isDark)),
+                        style: TextStyle(color: AppColors.textMuted(isDark)),
                       ),
                     ),
                   );
                 }
 
                 return CupertinoListSection.insetGrouped(
-                  backgroundColor:
-                      AppColors.background(isDark),
-                  margin: EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm),
+                  backgroundColor: AppColors.background(isDark),
+                  margin: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                   children: docs.map((doc) {
                     final targetUid = doc.id;
                     return FutureBuilder<
@@ -290,55 +264,26 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                           .doc(targetUid)
                           .get(),
                       builder: (context, userSnap) {
-                        final userData =
-                            userSnap.data?.data();
+                        final userData = userSnap.data?.data();
                         if (userData == null) {
                           return const SizedBox.shrink();
                         }
                         final username =
-                            (userData['username'] ?? 'User')
-                                .toString();
-                        final email =
-                            (userData['email'] ?? '').toString();
+                            (userData['username'] ?? 'User').toString();
+                        final email = (userData['email'] ?? '').toString();
                         final imageUrl =
-                            (userData['userimageurl'] ?? '')
-                                .toString();
-                        final isSelected = _selectedMembers.any(
-                            (m) => m['uid'] == targetUid);
+                            (userData['userimageurl'] ?? '').toString();
+                        final isSelected =
+                            _selectedMembers.any((m) => m['uid'] == targetUid);
 
                         return CupertinoListTile(
-                          leading: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: imageUrl.isEmpty
-                                  ? accent.withValues(alpha: 0.15)
-                                  : null,
-                              image: imageUrl.isNotEmpty
-                                  ? DecorationImage(
-                                      image: NetworkImage(
-                                          imageUrl),
-                                      fit: BoxFit.cover,
-                                      onError: (_, __) {},
-                                    )
-                                  : null,
-                            ),
-                            child: imageUrl.isEmpty
-                                ? Center(
-                                    child: Text(
-                                      username.isNotEmpty
-                                          ? username[0]
-                                              .toUpperCase()
-                                          : '?',
-                                      style: TextStyle(
-                                        fontWeight:
-                                            FontWeight.w600,
-                                        color: accent,
-                                      ),
-                                    ),
-                                  )
-                                : null,
+                          padding: AppSpacing.listTilePadding,
+                          leadingSize: AppSpacing.listTileLeadingSize,
+                          leadingToTitle: AppSpacing.listTileLeadingToTitle,
+                          leading: UserAvatar(
+                            username: username,
+                            imageUrl: imageUrl,
+                            radius: AppAvatarSize.listTile,
                           ),
                           title: Text(username),
                           subtitle: email.isEmpty
@@ -346,13 +291,11 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                               : Text(
                                   email,
                                   maxLines: 1,
-                                  overflow:
-                                      TextOverflow.ellipsis,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                           trailing: Icon(
                             isSelected
-                                ? CupertinoIcons
-                                    .check_mark_circled_solid
+                                ? CupertinoIcons.check_mark_circled_solid
                                 : CupertinoIcons.circle,
                             color: isSelected
                                 ? accent
@@ -361,10 +304,8 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                           ),
                           onTap: () => setState(() {
                             if (isSelected) {
-                              _selectedMembers.removeWhere(
-                                  (m) =>
-                                      m['uid'] ==
-                                      targetUid);
+                              _selectedMembers
+                                  .removeWhere((m) => m['uid'] == targetUid);
                             } else {
                               _selectedMembers.add({
                                 'uid': targetUid,

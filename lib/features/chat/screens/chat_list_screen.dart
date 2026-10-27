@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quick_messenger/core/providers/auth_providers.dart';
 import 'package:quick_messenger/core/theme/app_colors.dart';
 import 'package:quick_messenger/core/theme/app_spacing.dart';
-import 'package:quick_messenger/core/widgets/glass_action_sheet.dart';
+import 'package:quick_messenger/core/widgets/app_filter_chip.dart';
+import 'package:quick_messenger/core/widgets/app_screen_header.dart';
 import 'package:quick_messenger/core/widgets/liquid_glass_components.dart';
 import 'package:quick_messenger/features/chat/models/conversation_model.dart';
 import 'package:quick_messenger/features/chat/providers/chat_provider.dart';
@@ -58,14 +59,6 @@ class _ChatHomeState extends ConsumerState<ChatHome>
     );
   }
 
-  void _openSearch() {
-    HapticFeedback.lightImpact();
-    Navigator.push(
-      context,
-      CupertinoPageRoute(builder: (_) => const SearchUser()),
-    );
-  }
-
   void _showMoreMenu() {
     LGActionSheet.show(
       context: context,
@@ -98,112 +91,65 @@ class _ChatHomeState extends ConsumerState<ChatHome>
     final conversationsAsync = ref.watch(conversationsProvider);
     final groupsAsync = ref.watch(groupsProvider);
 
-    final unreadCountTotal = conversationsAsync.value
-            ?.where((c) => c.unreadCount > 0)
-            .length ??
-        0;
+    final unreadCountTotal =
+        conversationsAsync.value?.where((c) => c.unreadCount > 0).length ?? 0;
 
     return Column(
       children: [
-        // ── WhatsApp Liquid Glass Header Top Row ──
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-              AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Left More Options (...)
-              LGIconButton(
-                icon: CupertinoIcons.ellipsis,
-                onPressed: _showMoreMenu,
-              ),
-              // Right Accent Plus Button
-              GestureDetector(
-                onTap: _openNewChat,
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: accent,
-                    boxShadow: [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      CupertinoIcons.plus,
-                      color: CupertinoColors.white,
-                      size: 22,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // ── Large Title "Chats" ──
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-              AppSpacing.md, AppSpacing.xs, AppSpacing.md, AppSpacing.xs),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Chats',
-              style: TextStyle(
-                fontFamily: '.SF Pro Display',
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.6,
-                color: AppColors.textPrimary(isDark),
-              ),
+        // ── Header Top Row ──
+        AppScreenHeader(
+          title: 'Chats',
+          actions: [
+            AppHeaderIconButton(
+              icon: CupertinoIcons.plus,
+              isPrimary: true,
+              iconSize: 22,
+              onPressed: _showMoreMenu,
             ),
-          ),
+          ],
         ),
 
-        // ── Search Field ("Ask Meta AI or Search") ──
+        // ── Search Field ──
         Padding(
           padding: EdgeInsets.fromLTRB(
               AppSpacing.md, AppSpacing.xs, AppSpacing.md, AppSpacing.xs),
           child: LGSearchField(
             controller: _searchController,
-            placeholder: 'Ask Meta AI or Search',
+            placeholder: 'Search chats or messages',
             onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
             onClear: () => setState(() => _query = ''),
-            onAiTap: _openSearch,
           ),
         ),
 
         // ── Filter Pills Row ──
         SizedBox(
-          height: 42,
+          height: 34,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+            padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
             children: [
-              _Pill(
+              AppFilterChip(
                 label: 'All',
-                selected: _filter == _Filter.all,
+                isSelected: _filter == _Filter.all,
                 onTap: () => setState(() => _filter = _Filter.all),
               ),
-              _Pill(
-                label: unreadCountTotal > 0 ? 'Unread $unreadCountTotal' : 'Unread',
-                selected: _filter == _Filter.unread,
+              const SizedBox(width: 8),
+              AppFilterChip(
+                label: 'Unread',
+                count: unreadCountTotal,
+                isSelected: _filter == _Filter.unread,
                 onTap: () => setState(() => _filter = _Filter.unread),
               ),
-              _Pill(
+              const SizedBox(width: 8),
+              AppFilterChip(
                 label: 'Favorites',
-                selected: _filter == _Filter.favorites,
+                isSelected: _filter == _Filter.favorites,
                 onTap: () => setState(() => _filter = _Filter.favorites),
               ),
-              _Pill(
+              const SizedBox(width: 8),
+              AppFilterChip(
                 label: 'Groups',
-                selected: _filter == _Filter.groups,
+                isSelected: _filter == _Filter.groups,
                 onTap: () => setState(() => _filter = _Filter.groups),
               ),
             ],
@@ -237,9 +183,12 @@ class _ChatHomeState extends ConsumerState<ChatHome>
             data: (conversations) {
               final currentUserId = ref.watch(currentUserIdProvider);
               final rawGroups = groupsAsync.value ?? [];
-              final groups = rawGroups.where((g) =>
-                  (g.lastMessage != null && g.lastMessage!.trim().isNotEmpty) ||
-                  g.createdBy == currentUserId).toList();
+              final groups = rawGroups
+                  .where((g) =>
+                      (g.lastMessage != null &&
+                          g.lastMessage!.trim().isNotEmpty) ||
+                      g.createdBy == currentUserId)
+                  .toList();
               final visible = _applyFilter(conversations);
               final searched = _query.isEmpty
                   ? visible
@@ -248,9 +197,9 @@ class _ChatHomeState extends ConsumerState<ChatHome>
                           c.participantName.toLowerCase().contains(_query) ||
                           c.lastMessage.toLowerCase().contains(_query))
                       .toList();
-              final showGroups = (_filter == _Filter.all ||
-                      _filter == _Filter.groups) &&
-                  !_showArchived;
+              final showGroups =
+                  (_filter == _Filter.all || _filter == _Filter.groups) &&
+                      !_showArchived;
               final searchedGroups = _query.isEmpty
                   ? groups
                   : groups
@@ -276,7 +225,8 @@ class _ChatHomeState extends ConsumerState<ChatHome>
                       SliverToBoxAdapter(
                         child: CupertinoButton(
                           padding: EdgeInsets.symmetric(
-                              horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.sm),
                           onPressed: () => setState(() => _showArchived = true),
                           child: Row(
                             children: [
@@ -317,15 +267,19 @@ class _ChatHomeState extends ConsumerState<ChatHome>
                       SliverToBoxAdapter(
                         child: CupertinoButton(
                           padding: EdgeInsets.symmetric(
-                              horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-                          onPressed: () => setState(() => _showArchived = false),
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.sm),
+                          onPressed: () =>
+                              setState(() => _showArchived = false),
                           child: Row(
                             children: [
-                              Icon(CupertinoIcons.back, size: 18, color: accent),
+                              Icon(CupertinoIcons.back,
+                                  size: 18, color: accent),
                               const SizedBox(width: 4),
                               Text(
                                 'Back to chats',
-                                style: TextStyle(color: accent, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                    color: accent, fontWeight: FontWeight.w600),
                               ),
                             ],
                           ),
@@ -336,7 +290,20 @@ class _ChatHomeState extends ConsumerState<ChatHome>
                     if (showGroups)
                       SliverList(
                         delegate: SliverChildBuilderDelegate(
-                          (context, i) => GroupChatTile(group: searchedGroups[i]),
+                          (context, i) => RepaintBoundary(
+                            key: ValueKey('group_${searchedGroups[i].groupId}'),
+                            child: GroupChatTile(group: searchedGroups[i]),
+                          ),
+                          findChildIndexCallback: (Key key) {
+                            final valKey = key as ValueKey<String>?;
+                            if (valKey == null) return null;
+                            final val = valKey.value;
+                            if (!val.startsWith('group_')) return null;
+                            final gId = val.substring('group_'.length);
+                            final idx = searchedGroups
+                                .indexWhere((g) => g.groupId == gId);
+                            return idx == -1 ? null : idx;
+                          },
                           childCount: searchedGroups.length,
                         ),
                       ),
@@ -344,38 +311,27 @@ class _ChatHomeState extends ConsumerState<ChatHome>
                     // ── Direct Conversations ──
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
-                        (context, i) => ConversationTile(
-                          conversation: searched[i],
-                          onTap: () => _openChat(searched[i]),
+                        (context, i) => RepaintBoundary(
+                          key: ValueKey('chat_${searched[i].id}'),
+                          child: ConversationTile(
+                            conversation: searched[i],
+                            onTap: () => _openChat(searched[i]),
+                          ),
                         ),
+                        findChildIndexCallback: (Key key) {
+                          final valKey = key as ValueKey<String>?;
+                          if (valKey == null) return null;
+                          final val = valKey.value;
+                          if (!val.startsWith('chat_')) return null;
+                          final cId = val.substring('chat_'.length);
+                          final idx = searched.indexWhere((c) => c.id == cId);
+                          return idx == -1 ? null : idx;
+                        },
                         childCount: searched.length,
                       ),
                     ),
 
-                    // ── Encrypted Caption Footer & Clearance ──
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 20.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              CupertinoIcons.lock_fill,
-                              size: 13,
-                              color: AppColors.textMuted(isDark),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Your personal messages are end-to-end encrypted',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textMuted(isDark),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                    // Bottom navigation clearance
                     const SliverToBoxAdapter(child: SizedBox(height: 110)),
                   ],
                 ),
@@ -389,9 +345,10 @@ class _ChatHomeState extends ConsumerState<ChatHome>
 
   List<ConversationModel> _applyFilter(List<ConversationModel> all) {
     // Only show conversations where chat has actually started (at least 1 message)
-    final activeOnly = all.where((c) =>
-        c.lastMessage.trim().isNotEmpty &&
-        c.lastMessage != 'Tap to chat').toList();
+    final activeOnly = all
+        .where((c) =>
+            c.lastMessage.trim().isNotEmpty && c.lastMessage != 'Tap to chat')
+        .toList();
 
     final base = _showArchived
         ? activeOnly.where((c) => c.isArchived).toList()
@@ -426,56 +383,6 @@ class _ChatHomeState extends ConsumerState<ChatHome>
   }
 }
 
-class _Pill extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _Pill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final accent = CupertinoTheme.of(context).primaryColor;
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: isDark ? 0.25 : 0.15)
-                : (isDark ? const Color(0xFF242428) : const Color(0xFFEFEFF4)),
-            borderRadius: BorderRadius.circular(18),
-            border: selected
-                ? Border.all(color: accent.withValues(alpha: 0.6), width: 1.0)
-                : null,
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected ? accent : AppColors.textSecondary(isDark),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _EmptyState extends StatelessWidget {
   final bool isDark;
   final bool searching;
@@ -496,7 +403,9 @@ class _EmptyState extends StatelessWidget {
           Icon(
             searching
                 ? CupertinoIcons.search
-                : (isGroups ? CupertinoIcons.person_2_fill : CupertinoIcons.chat_bubble_2),
+                : (isGroups
+                    ? CupertinoIcons.person_2_fill
+                    : CupertinoIcons.chat_bubble_2),
             size: 54,
             color: AppColors.textMuted(isDark),
           ),
@@ -525,4 +434,3 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
-

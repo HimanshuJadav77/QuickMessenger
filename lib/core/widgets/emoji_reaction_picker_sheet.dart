@@ -16,7 +16,8 @@ class EmojiReactionPickerSheet extends StatefulWidget {
   });
 
   @override
-  State<EmojiReactionPickerSheet> createState() => _EmojiReactionPickerSheetState();
+  State<EmojiReactionPickerSheet> createState() =>
+      _EmojiReactionPickerSheetState();
 }
 
 class _EmojiReactionPickerSheetState extends State<EmojiReactionPickerSheet> {
@@ -24,17 +25,47 @@ class _EmojiReactionPickerSheetState extends State<EmojiReactionPickerSheet> {
 
   final List<String> _quickEmojis = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
   final List<String> _allEmojis = [
-    '❤️', '👍', '😂', '😮', '😢', '🙏',
-    '🥰', '🔥', '👏', '🎉', '🤔', '😭',
-    '😡', '👀', '💯', '✨', '🙌', '💔',
-    '😎', '😊', '👍🏻', '👍🏽', '👍🏿', '💩',
-    '🤡', '👻', '👽', '👾', '🤖', '🎃',
-    '👍', '👎', '👊', '✊', '🤛', '🤜',
+    '❤️',
+    '👍',
+    '😂',
+    '😮',
+    '😢',
+    '🙏',
+    '🥰',
+    '🔥',
+    '👏',
+    '🎉',
+    '🤔',
+    '😭',
+    '😡',
+    '👀',
+    '💯',
+    '✨',
+    '🙌',
+    '💔',
+    '😎',
+    '😊',
+    '👍🏻',
+    '👍🏽',
+    '👍🏿',
+    '💩',
+    '🤡',
+    '👻',
+    '👽',
+    '👾',
+    '🤖',
+    '🎃',
+    '👍',
+    '👎',
+    '👊',
+    '✊',
+    '🤛',
+    '🤜',
   ];
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = AppColors.isDarkMode(context);
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -72,7 +103,9 @@ class _EmojiReactionPickerSheetState extends State<EmojiReactionPickerSheet> {
                       ..._quickEmojis.map((emoji) => _buildEmojiButton(emoji)),
                       IconButton(
                         icon: Icon(
-                          _isExpanded ? Icons.expand_less : Icons.add_reaction_outlined,
+                          _isExpanded
+                              ? Icons.expand_less
+                              : Icons.add_reaction_outlined,
                           color: AppColors.textPrimary(isDark),
                         ),
                         onPressed: () {
@@ -91,7 +124,8 @@ class _EmojiReactionPickerSheetState extends State<EmojiReactionPickerSheet> {
                     child: SizedBox(
                       height: 150,
                       child: GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 7,
                           mainAxisSpacing: 12,
                           crossAxisSpacing: 12,
@@ -135,4 +169,3 @@ class _EmojiReactionPickerSheetState extends State<EmojiReactionPickerSheet> {
     );
   }
 }
-

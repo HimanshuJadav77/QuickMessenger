@@ -68,14 +68,14 @@ class AboutScreen extends StatelessWidget {
               backgroundColor: AppColors.background(isDark),
               margin: EdgeInsets.zero,
               children: [
-                _row(context, isDark, CupertinoIcons.shield,
-                    'Architecture', 'Local-first, Riverpod state'),
-                _row(context, isDark, CupertinoIcons.bolt,
-                    'Real-time transport', 'Socket.IO + FCM'),
-                _row(context, isDark, CupertinoIcons.archivebox,
-                    'Local persistence', 'SQLite, per-user keys'),
-                _row(context, isDark, CupertinoIcons.lock,
-                    'Authentication', 'Firebase secure token'),
+                _row(context, isDark, CupertinoIcons.device_phone_portrait,
+                    'Data & Storage', 'Saved locally on your device'),
+                _row(context, isDark, CupertinoIcons.bolt_fill,
+                    'Messaging', 'Fast real-time chat & media delivery'),
+                _row(context, isDark, CupertinoIcons.shield_fill,
+                    'Security', 'Protected account authentication'),
+                _row(context, isDark, CupertinoIcons.waveform,
+                    'Voice & Video', 'High-definition peer calls'),
               ],
             ),
             SizedBox(height: AppSpacing.lg),
@@ -83,9 +83,8 @@ class AboutScreen extends StatelessWidget {
               child: Text(
                 '© 2026 QuickMessenger Team. All rights reserved.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: AppColors.textMuted(isDark),
-                    fontSize: 12),
+                style:
+                    TextStyle(color: AppColors.textMuted(isDark), fontSize: 12),
               ),
             ),
           ],
@@ -97,8 +96,7 @@ class AboutScreen extends StatelessWidget {
   static CupertinoListTile _row(BuildContext context, bool isDark,
       IconData icon, String title, String value) {
     return CupertinoListTile(
-      leading: Icon(icon,
-          color: CupertinoTheme.of(context).primaryColor),
+      leading: Icon(icon, color: CupertinoTheme.of(context).primaryColor),
       title: Text(title),
       subtitle: Text(value),
     );

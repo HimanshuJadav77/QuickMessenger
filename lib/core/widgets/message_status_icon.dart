@@ -18,8 +18,10 @@ class MessageStatusIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = status.toLowerCase().trim();
     final bool isSeen = s == 'seen' || s == 'read';
-    final bool isSend = !isSeen && (s == 'send' || s == 'sent' || s == 'delivered');
-    final bool isNotSend = !isSeen && !isSend; // pending, failed, not send, error, etc.
+    final bool isSend =
+        !isSeen && (s == 'send' || s == 'sent' || s == 'delivered');
+    final bool isNotSend =
+        !isSeen && !isSend; // pending, failed, not send, error, etc.
 
     final String tooltip = isSeen
         ? 'Seen (Traffic Signal: Green)'
@@ -104,5 +106,3 @@ class _SignalLight extends StatelessWidget {
     );
   }
 }
-
-

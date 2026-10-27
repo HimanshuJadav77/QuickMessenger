@@ -13,7 +13,8 @@ enum ChatEntrySource {
 
 class NavigationService {
   NavigationService._();
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
   static Future<void> navigateToChat({
     required String userId,
@@ -46,7 +47,8 @@ class NavigationService {
 
     // Avoid pushing duplicate ChatScreen if already viewing this conversation
     final modalRoute = ModalRoute.of(context);
-    if (modalRoute != null && modalRoute.settings.name == '/chat_$conversationId') {
+    if (modalRoute != null &&
+        modalRoute.settings.name == '/chat_$conversationId') {
       return;
     }
 

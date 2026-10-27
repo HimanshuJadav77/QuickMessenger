@@ -8,7 +8,8 @@ final connectivityProvider = StreamProvider<InternetStatus>((ref) {
 // We keep a dummy service so existing code calling NetworkConnectivityService.instance.initializeInternetStatus(context) doesn't break,
 // but we do nothing in it to avoid the Snackbar.
 class NetworkConnectivityService {
-  static final NetworkConnectivityService instance = NetworkConnectivityService._internal();
+  static final NetworkConnectivityService instance =
+      NetworkConnectivityService._internal();
 
   NetworkConnectivityService._internal();
   factory NetworkConnectivityService() => instance;
@@ -21,4 +22,3 @@ class NetworkConnectivityService {
     // No-op
   }
 }
-

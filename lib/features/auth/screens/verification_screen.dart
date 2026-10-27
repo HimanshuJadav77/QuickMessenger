@@ -31,8 +31,7 @@ class _VerificationState extends State<Verification> {
       const Duration(seconds: 1),
       () => _auth.currentUser?.sendEmailVerification(),
     );
-    timer =
-        Timer.periodic(const Duration(seconds: 2), (_) => checkVerified());
+    timer = Timer.periodic(const Duration(seconds: 2), (_) => checkVerified());
   }
 
   @override
@@ -131,8 +130,7 @@ class _VerificationState extends State<Verification> {
                     onPressed: _cancel,
                     child: const Text(
                       'Cancel',
-                      style: TextStyle(
-                          color: CupertinoColors.systemRed),
+                      style: TextStyle(color: CupertinoColors.systemRed),
                     ),
                   ),
                 ],

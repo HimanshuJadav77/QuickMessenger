@@ -1,5 +1,8 @@
 enum CallStatus { calling, ringing, connected, ended }
+
 enum CallType { voice, video }
+
+enum CallNetworkType { wifi, cellular, ethernet, unknown }
 
 class CallModel {
   final String callId;
@@ -14,6 +17,8 @@ class CallModel {
   final String? channelId;
   final String? token;
   final int? remoteUid;
+  final List<Map<String, dynamic>>? iceServers;
+  final CallNetworkType? networkType;
 
   CallModel({
     required this.callId,
@@ -28,6 +33,8 @@ class CallModel {
     this.channelId,
     this.token,
     this.remoteUid,
+    this.iceServers,
+    this.networkType,
   });
 
   Map<String, dynamic> toMap() {
@@ -44,6 +51,8 @@ class CallModel {
       if (channelId != null) 'channelId': channelId,
       if (token != null) 'token': token,
       if (remoteUid != null) 'remoteUid': remoteUid,
+      if (iceServers != null) 'iceServers': iceServers,
+      if (networkType != null) 'networkType': networkType!.name,
     };
   }
 
@@ -56,13 +65,26 @@ class CallModel {
       receiverId: map['receiverId'] ?? '',
       receiverName: map['receiverName'],
       receiverAvatar: map['receiverAvatar'],
-      callType: CallType.values.firstWhere((e) => e.name == map['callType'], orElse: () => CallType.voice),
-      status: CallStatus.values.firstWhere((e) => e.name == map['status'], orElse: () => CallStatus.calling),
+      callType: CallType.values.firstWhere((e) => e.name == map['callType'],
+          orElse: () => CallType.voice),
+      status: CallStatus.values.firstWhere((e) => e.name == map['status'],
+          orElse: () => CallStatus.calling),
       channelId: map['channelId'],
       token: map['token'],
       remoteUid: map['remoteUid'] is int
           ? map['remoteUid']
-          : (map['remoteUid'] != null ? int.tryParse(map['remoteUid'].toString()) : null),
+          : (map['remoteUid'] != null
+              ? int.tryParse(map['remoteUid'].toString())
+              : null),
+      iceServers: map['iceServers'] != null
+          ? List<Map<String, dynamic>>.from(map['iceServers'])
+          : null,
+      networkType: map['networkType'] != null
+          ? CallNetworkType.values.firstWhere(
+              (e) => e.name == map['networkType'],
+              orElse: () => CallNetworkType.unknown,
+            )
+          : null,
     );
   }
 
@@ -79,6 +101,8 @@ class CallModel {
     String? channelId,
     String? token,
     int? remoteUid,
+    List<Map<String, dynamic>>? iceServers,
+    CallNetworkType? networkType,
   }) {
     return CallModel(
       callId: callId ?? this.callId,
@@ -93,7 +117,8 @@ class CallModel {
       channelId: channelId ?? this.channelId,
       token: token ?? this.token,
       remoteUid: remoteUid ?? this.remoteUid,
+      iceServers: iceServers ?? this.iceServers,
+      networkType: networkType ?? this.networkType,
     );
   }
 }
-

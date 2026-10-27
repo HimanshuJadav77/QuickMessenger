@@ -22,19 +22,15 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-        return GestureDetector(onTap: onTap, child: LiquidGlassContainer(
-      padding: padding ?? const EdgeInsets.all(16.0),
-      margin: margin ?? const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
-      customRadius: borderRadius ?? BorderRadius.circular(12),
-      
-      level: 1,
-      
-      
-      child: child,
-    ));
+    return GestureDetector(
+        onTap: onTap,
+        child: LiquidGlassContainer(
+          padding: padding ?? const EdgeInsets.all(16.0),
+          margin: margin ??
+              const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
+          customRadius: borderRadius ?? BorderRadius.circular(12),
+          level: 1,
+          child: child,
+        ));
   }
 }
-
-
-
-

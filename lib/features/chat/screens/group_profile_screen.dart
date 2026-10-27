@@ -21,11 +21,13 @@ class GroupProfileScreen extends ConsumerWidget {
     required this.groupName,
   });
 
-  void _confirmDeleteGroup(BuildContext context, WidgetRef ref, String groupId, String name) {
+  void _confirmDeleteGroup(
+      BuildContext context, WidgetRef ref, String groupId, String name) {
     LGActionSheet.showConfirmation(
       context: context,
       title: 'Delete "$name"?',
-      message: 'This group will be deleted for all members and cannot be undone.',
+      message:
+          'This group will be deleted for all members and cannot be undone.',
       confirmTitle: 'Delete Group',
       isDestructive: true,
       onConfirm: () async {
@@ -37,7 +39,8 @@ class GroupProfileScreen extends ConsumerWidget {
     );
   }
 
-  void _confirmExitGroup(BuildContext context, WidgetRef ref, String groupId, String name) {
+  void _confirmExitGroup(
+      BuildContext context, WidgetRef ref, String groupId, String name) {
     LGActionSheet.showConfirmation(
       context: context,
       title: 'Exit "$name"?',
@@ -77,21 +80,19 @@ class GroupProfileScreen extends ConsumerWidget {
           future: repo.getGroupProfile(groupId),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                  child: CupertinoActivityIndicator());
+              return const Center(child: CupertinoActivityIndicator());
             }
 
             final profile = snapshot.data;
-            final GroupModel? group =
-                profile?['group'] as GroupModel?;
-            final List members =
-                (profile?['members'] as List?) ?? [];
+            final GroupModel? group = profile?['group'] as GroupModel?;
+            final List members = (profile?['members'] as List?) ?? [];
             final desc = (group?.description ?? '').isNotEmpty
                 ? group!.description
                 : 'No description';
             final memberCount =
                 members.isNotEmpty ? members.length : (group?.memberCount ?? 1);
-            final isOwner = (group?.createdBy == repo.currentUserId) || (group?.myRole == 'owner');
+            final isOwner = (group?.createdBy == repo.currentUserId) ||
+                (group?.myRole == 'owner');
 
             return ListView(
               children: [
@@ -100,7 +101,7 @@ class GroupProfileScreen extends ConsumerWidget {
                   child: UserAvatar(
                     username: group?.name ?? groupName,
                     imageUrl: group?.imageUrl,
-                    radius: 46,
+                    radius: AppAvatarSize.profileHero,
                   ),
                 ),
                 SizedBox(height: AppSpacing.sm),
@@ -116,8 +117,7 @@ class GroupProfileScreen extends ConsumerWidget {
                 Center(
                   child: Text(
                     '$memberCount members',
-                    style: TextStyle(
-                        color: AppColors.textSecondary(isDark)),
+                    style: TextStyle(color: AppColors.textSecondary(isDark)),
                   ),
                 ),
                 Padding(
@@ -126,21 +126,18 @@ class GroupProfileScreen extends ConsumerWidget {
                     width: double.infinity,
                     padding: EdgeInsets.all(AppSpacing.md),
                     decoration: BoxDecoration(
-                      color:
-                          AppColors.surfaceContainer(isDark),
+                      color: AppColors.surfaceContainer(isDark),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       desc,
-                      style: TextStyle(
-                          color:
-                              AppColors.textPrimary(isDark)),
+                      style: TextStyle(color: AppColors.textPrimary(isDark)),
                     ),
                   ),
                 ),
                 Padding(
-                  padding: EdgeInsets.fromLTRB(AppSpacing.md,
-                      AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
+                  padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm,
+                      AppSpacing.md, AppSpacing.xs),
                   child: Text(
                     'MEMBERS'.toUpperCase(),
                     style: TextStyle(
@@ -159,55 +156,45 @@ class GroupProfileScreen extends ConsumerWidget {
                         group == null
                             ? 'Group not found locally yet.'
                             : 'No member rows cached yet.',
-                        style: TextStyle(
-                            color:
-                                AppColors.textMuted(isDark)),
+                        style: TextStyle(color: AppColors.textMuted(isDark)),
                       ),
                     ),
                   )
                 else
                   CupertinoListSection.insetGrouped(
-                    backgroundColor:
-                        AppColors.background(isDark),
-                    margin: EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm),
+                    backgroundColor: AppColors.background(isDark),
+                    margin: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                     children: members.map((m) {
-                      final map = Map<String, dynamic>.from(
-                          m as Map);
+                      final map = Map<String, dynamic>.from(m as Map);
                       final username =
                           (map['username'] ?? map['display_name'] ?? 'Member')
                               .toString();
-                      final imageUrl =
-                          (map['image_url'] ?? '').toString();
-                      final role =
-                          (map['role'] ?? 'member').toString();
-                      final isMe = (map['uid'] ?? '').toString() ==
-                          repo.currentUserId;
+                      final imageUrl = (map['image_url'] ?? '').toString();
+                      final role = (map['role'] ?? 'member').toString();
+                      final isMe =
+                          (map['uid'] ?? '').toString() == repo.currentUserId;
 
                       final Color roleColor = switch (role) {
-                        'owner' =>
-                          CupertinoColors.systemOrange,
+                        'owner' => CupertinoColors.systemOrange,
                         'admin' => accent,
                         _ => AppColors.textMuted(isDark),
-                      };                      return CupertinoListTile(
+                      };
+                      return CupertinoListTile(
+                        padding: AppSpacing.listTilePadding,
+                        leadingSize: AppSpacing.listTileLeadingSize,
+                        leadingToTitle: AppSpacing.listTileLeadingToTitle,
                         leading: UserAvatar(
                           username: username,
                           imageUrl: imageUrl,
-                          radius: 20,
+                          radius: AppAvatarSize.listTile,
                         ),
-                        title: Text(isMe
-                            ? 'You ($username)'
-                            : username),
+                        title: Text(isMe ? 'You ($username)' : username),
                         trailing: Container(
-                          padding:
-                              const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: roleColor.withValues(
-                                alpha: 0.15),
-                            borderRadius:
-                                BorderRadius.circular(8),
+                            color: roleColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             role.toUpperCase(),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 import 'app_colors.dart';
 
 const String _themePrefKey = 'selected_app_theme_mode';
@@ -24,38 +23,35 @@ class ThemeState {
 
 class ThemeStateNotifier extends StateNotifier<ThemeState> {
   ThemeStateNotifier()
-      : super(ThemeState(mode: ThemeMode.system, accentColor: AppColors.accentPurple)) {
+      : super(ThemeState(
+            mode: ThemeMode.dark, accentColor: AppColors.accentWhite)) {
     _loadSettings();
   }
 
   Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // Load Mode
       final savedMode = prefs.getString(_themePrefKey);
-      ThemeMode mode = ThemeMode.system;
+      ThemeMode mode = ThemeMode.dark;
       if (savedMode == 'light') {
         mode = ThemeMode.light;
-      } else if (savedMode == 'dark') {
+      } else {
         mode = ThemeMode.dark;
       }
 
-      state = ThemeState(mode: mode, accentColor: AppColors.accentPurple);
+      state = ThemeState(mode: mode, accentColor: AppColors.accentWhite);
     } catch (_) {}
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
-    state = state.copyWith(mode: mode);
+    final newMode = mode == ThemeMode.light ? ThemeMode.light : ThemeMode.dark;
+    state = state.copyWith(mode: newMode);
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (mode == ThemeMode.light) {
-        await prefs.setString(_themePrefKey, 'light');
-      } else if (mode == ThemeMode.dark) {
-        await prefs.setString(_themePrefKey, 'dark');
-      } else {
-        await prefs.setString(_themePrefKey, 'system');
-      }
+      await prefs.setString(
+          _themePrefKey, newMode == ThemeMode.light ? 'light' : 'dark');
     } catch (_) {}
   }
 
@@ -68,7 +64,7 @@ class ThemeStateNotifier extends StateNotifier<ThemeState> {
   }
 }
 
-final themeStateProvider = StateNotifierProvider<ThemeStateNotifier, ThemeState>((ref) {
+final themeStateProvider =
+    StateNotifierProvider<ThemeStateNotifier, ThemeState>((ref) {
   return ThemeStateNotifier();
 });
-

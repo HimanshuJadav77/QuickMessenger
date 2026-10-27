@@ -1,13 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show ThemeMode, WidgetsFlutterBinding;
+import 'package:flutter/material.dart'
+    show Theme, ThemeMode, WidgetsFlutterBinding;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quick_messenger/core/services/navigation_service.dart';
 import 'package:quick_messenger/core/services/notification_service.dart';
 import 'package:quick_messenger/core/services/socket_service.dart';
 import 'package:quick_messenger/core/theme/app_colors.dart';
+import 'package:quick_messenger/core/theme/app_theme.dart';
 import 'package:quick_messenger/core/theme/theme_provider.dart';
 import 'package:quick_messenger/features/splash/screens/splash_screen.dart';
 import 'package:quick_messenger/features/chat/widgets/incoming_call_dialog.dart';
@@ -30,8 +32,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       description: 'High priority incoming call notifications',
       importance: Importance.max,
     );
-    final androidPlugin = localNotification
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin =
+        localNotification.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(callChannel);
 
     final callerName = data['callerName'] ?? 'Someone';
@@ -51,7 +54,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           category: AndroidNotificationCategory.call,
         ),
       ),
-      payload: 'call|${data['callId'] ?? ''}|${data['callerId'] ?? ''}|${data['channelId'] ?? ''}|${data['token'] ?? ''}|${data['callType'] ?? 'voice'}|${data['callerName'] ?? 'Someone'}|${data['callerImageUrl'] ?? ''}',
+      payload:
+          'call|${data['callId'] ?? ''}|${data['callerId'] ?? ''}|${data['channelId'] ?? ''}|${data['token'] ?? ''}|${data['callType'] ?? 'voice'}|${data['callerName'] ?? 'Someone'}|${data['callerImageUrl'] ?? ''}',
     );
   }
 }
@@ -76,7 +80,6 @@ void main() async {
   runApp(const ProviderScope(child: QuickMessenger()));
 }
 
-
 /// iOS-first app shell: CupertinoApp wired to Riverpod theme state.
 /// - ThemeMode (system/light/dark) + user accent flow from [themeStateProvider]
 /// - No hardcoded seed color; scaffold + primary derive from tokens.
@@ -86,25 +89,22 @@ class QuickMessenger extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeState = ref.watch(themeStateProvider);
-    final accent = themeState.accentColor;
-
-    // Resolve actual brightness for Cupertino (system follows platform).
-    final platformBrightness =
-        MediaQuery.platformBrightnessOf(context);
-    final bool isDark = switch (themeState.mode) {
-      ThemeMode.dark => true,
-      ThemeMode.light => false,
-      ThemeMode.system => platformBrightness == Brightness.dark,
-    };
+    final bool isDark = themeState.mode == ThemeMode.dark;
+    final accent = isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
 
     return CupertinoApp(
       navigatorKey: NavigationService.navigatorKey,
       builder: (context, child) {
-        return Stack(
-          children: [
-            if (child != null) child,
-            const IncomingCallDialog(),
-          ],
+        return Theme(
+          data: isDark
+              ? AppTheme.darkOledTheme(accent)
+              : AppTheme.lightTheme(accent),
+          child: Stack(
+            children: [
+              if (child != null) child,
+              const IncomingCallDialog(),
+            ],
+          ),
         );
       },
       debugShowCheckedModeBanner: false,
@@ -112,9 +112,10 @@ class QuickMessenger extends ConsumerWidget {
       theme: CupertinoThemeData(
         brightness: isDark ? Brightness.dark : Brightness.light,
         primaryColor: accent,
+        primaryContrastingColor:
+            isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
         scaffoldBackgroundColor: AppColors.background(isDark),
-        barBackgroundColor:
-            AppColors.glassFill(isDark).withValues(alpha: 0.85),
+        barBackgroundColor: AppColors.glassFill(isDark).withValues(alpha: 0.85),
         textTheme: CupertinoTextThemeData(
           primaryColor: AppColors.textPrimary(isDark),
           textStyle: TextStyle(

@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors;
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -17,6 +16,7 @@ class MessageInput extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback onSend;
   final VoidCallback? onAttach;
+  final bool hasAttachments;
 
   const MessageInput({
     super.key,
@@ -24,6 +24,7 @@ class MessageInput extends StatelessWidget {
     required this.onChanged,
     required this.onSend,
     this.onAttach,
+    this.hasAttachments = false,
   });
 
   @override
@@ -54,25 +55,24 @@ class MessageInput extends StatelessWidget {
               ),
             ),
             SizedBox(width: AppSpacing.xs),
-            // iMessage-style send morph: arrow appears only with text.
+            // Send button appears when text is entered OR attachments are selected
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: controller,
               builder: (context, value, child) {
                 final hasText = value.text.trim().isNotEmpty;
+                final shouldShowSend = hasText || hasAttachments;
                 return AnimatedSwitcher(
                   duration: AppMotion.microStandard,
                   transitionBuilder: (child, animation) => ScaleTransition(
                     scale: CurvedAnimation(
                         parent: animation, curve: Curves.easeOutBack),
-                    child: FadeTransition(
-                        opacity: animation, child: child),
+                    child: FadeTransition(opacity: animation, child: child),
                   ),
-                  child: hasText
+                  child: shouldShowSend
                       ? Padding(
                           key: const ValueKey('send_btn'),
                           padding: EdgeInsets.only(
-                              right: AppSpacing.xs,
-                              bottom: AppSpacing.xs),
+                              right: AppSpacing.xs, bottom: AppSpacing.xs),
                           child: _SendButton(
                             onTap: () {
                               HapticFeedback.lightImpact();
@@ -81,9 +81,7 @@ class MessageInput extends StatelessWidget {
                           ),
                         )
                       : const SizedBox(
-                          key: ValueKey('empty_space'),
-                          width: 8,
-                          height: 36),
+                          key: ValueKey('empty_space'), width: 8, height: 36),
                 );
               },
             ),
@@ -130,31 +128,32 @@ class _MessageTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark =
-        CupertinoTheme.of(context).brightness == Brightness.dark;
-    return CupertinoTextField(
-      controller: controller,
-      onChanged: onChanged,
-      textCapitalization: TextCapitalization.sentences,
-      maxLines: 4,
-      minLines: 1,
-      placeholder: 'Message',
-      placeholderStyle: TextStyle(
-        color: AppColors.textMuted(isDark),
-        fontSize: 16,
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: CupertinoTextField(
+        controller: controller,
+        onChanged: onChanged,
+        textCapitalization: TextCapitalization.sentences,
+        maxLines: 4,
+        minLines: 1,
+        placeholder: 'Message',
+        placeholderStyle: TextStyle(
+          color: AppColors.textMuted(isDark),
+          fontSize: 16,
+        ),
+        style: TextStyle(
+          color: AppColors.textPrimary(isDark),
+          fontSize: 16,
+          height: 1.4,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceContainer(isDark).withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        cursorColor: CupertinoTheme.of(context).primaryColor,
       ),
-      style: TextStyle(
-        color: AppColors.textPrimary(isDark),
-        fontSize: 16,
-        height: 1.4,
-      ),
-      padding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainer(isDark).withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      cursorColor: CupertinoTheme.of(context).primaryColor,
     );
   }
 }
@@ -200,10 +199,10 @@ class _SendButtonState extends State<_SendButton> {
               color: CupertinoTheme.of(context).primaryColor,
               shape: BoxShape.circle,
             ),
-            child: const Center(
+            child: Center(
               child: Icon(
                 CupertinoIcons.arrow_up,
-                color: Colors.white,
+                color: CupertinoTheme.of(context).primaryContrastingColor,
                 size: 20,
               ),
             ),

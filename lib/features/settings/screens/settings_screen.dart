@@ -9,11 +9,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quick_messenger/core/providers/auth_providers.dart';
 import 'package:quick_messenger/core/theme/app_colors.dart';
 import 'package:quick_messenger/core/theme/app_spacing.dart';
-import 'package:quick_messenger/core/theme/app_typography.dart';
 import 'package:quick_messenger/core/theme/theme_provider.dart';
+import 'package:quick_messenger/core/widgets/app_screen_header.dart';
+import 'package:quick_messenger/core/widgets/app_switch.dart';
 import 'package:quick_messenger/core/widgets/glass_dialog.dart';
-import 'package:quick_messenger/core/widgets/liquid_glass_components.dart';
 import 'package:quick_messenger/core/widgets/user_avatar.dart';
+import 'package:quick_messenger/core/services/auth_service.dart';
+import 'package:quick_messenger/core/services/drive_service.dart';
+import 'package:quick_messenger/core/services/media_cache_service.dart';
 import 'package:quick_messenger/features/settings/screens/blocked_users_screen.dart';
 import 'package:quick_messenger/features/settings/screens/about_screen.dart';
 import 'package:quick_messenger/features/auth/screens/auth_gate_screen.dart';
@@ -33,9 +36,8 @@ class SettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final themeState = ref.watch(themeStateProvider);
     final currentUserId = ref.watch(currentUserIdProvider);
-    final accent = CupertinoTheme.of(context).primaryColor;
+    final accent = AppColors.textPrimary(isDark);
 
     return CupertinoPageScaffold(
       backgroundColor: AppColors.background(isDark),
@@ -44,70 +46,38 @@ class SettingsPage extends ConsumerWidget {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            // ── Top Header Actions (Matching Chats Page) ──
-            Padding(
-              padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  // QR Code temporarily commented out as requested
-                  /*
-                  LGIconButton(
-                    icon: CupertinoIcons.qrcode,
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      Navigator.push(
-                        context,
-                        CupertinoPageRoute(builder: (_) => const MyProfile()),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  */
-                  LGIconButton(
-                    icon: CupertinoIcons.pencil,
-                    color: accent,
-                    iconColor: Colors.white,
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      Navigator.push(
-                        context,
-                        CupertinoPageRoute(builder: (_) => const MyProfile()),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Large Title: "You" (34pt Bold) ──
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
-              child: Text(
-                'You',
-                style: AppTypography.displayLarge.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary(isDark),
-                  letterSpacing: -0.5,
+            // ── Top Header Row ──
+            AppScreenHeader(
+              title: 'You',
+              actions: [
+                AppHeaderIconButton(
+                  icon: CupertinoIcons.pencil,
+                  isPrimary: true,
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.push(
+                      context,
+                      CupertinoPageRoute(builder: (_) => const MyProfile()),
+                    );
+                  },
                 ),
-              ),
+              ],
             ),
 
             const SizedBox(height: 12),
 
             // ── Profile Hero Card ──
-            if (currentUserId.isNotEmpty)
-              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection("Users")
-                    .doc(currentUserId)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final data = snapshot.data?.data() ?? {};
-                  final username = (data["username"] ?? 'User').toString();
-                  final userImage = (data["userimageurl"] ?? '').toString();
-                  final about = (data["about"] ?? 'Available').toString();
+            Builder(
+              builder: (context) {
+                final authUser = FirebaseAuth.instance.currentUser;
+                final fallbackUid = authUser?.uid ?? '';
+                final effectiveUserId = currentUserId.isNotEmpty ? currentUserId : fallbackUid;
+                final fallbackName = (authUser?.displayName?.isNotEmpty == true)
+                    ? authUser!.displayName!
+                    : 'You';
+                final fallbackPhoto = authUser?.photoURL ?? '';
 
+                Widget buildCard(String username, String userImage, String about) {
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
@@ -117,7 +87,8 @@ class SettingsPage extends ConsumerWidget {
                       );
                     },
                     child: Container(
-                      margin: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
+                      margin: EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md, vertical: 6),
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: isDark
@@ -132,7 +103,8 @@ class SettingsPage extends ConsumerWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.06),
+                            color: Colors.black
+                                .withValues(alpha: isDark ? 0.22 : 0.06),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -142,8 +114,9 @@ class SettingsPage extends ConsumerWidget {
                         children: [
                           UserAvatar(
                             username: username,
+                            seed: effectiveUserId,
                             imageUrl: userImage,
-                            radius: 30,
+                            radius: AppAvatarSize.settingsHero,
                             showOnlineBadge: true,
                             isOnline: true,
                           ),
@@ -186,62 +159,63 @@ class SettingsPage extends ConsumerWidget {
                       ),
                     ),
                   );
-                },
-              ),
+                }
+
+                if (effectiveUserId.isEmpty) {
+                  return buildCard(fallbackName, fallbackPhoto, 'Available');
+                }
+
+                return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection("Users")
+                      .doc(effectiveUserId)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final data = snapshot.data?.data() ?? {};
+                    final rawUsername = (data["username"] ?? '').toString();
+                    final username = rawUsername.isNotEmpty ? rawUsername : fallbackName;
+                    final rawUserImage = (data["userimageurl"] ?? data["imageurl"] ?? '').toString();
+                    final userImage = rawUserImage.isNotEmpty ? rawUserImage : fallbackPhoto;
+                    final about = (data["about"] ?? 'Available').toString();
+
+                    return buildCard(username, userImage, about);
+                  },
+                );
+              },
+            ),
 
             const SizedBox(height: 8),
 
             // ── Appearance Section (CupertinoSwitch) ──
             CupertinoListSection.insetGrouped(
+              margin:
+                  EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
               backgroundColor: AppColors.background(isDark),
               header: const Text('Appearance'),
               children: [
                 CupertinoListTile(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   leading: Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(7),
+                      color: AppColors.surfaceContainer(isDark),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      themeState.mode == ThemeMode.dark
+                      isDark
                           ? CupertinoIcons.moon_fill
                           : CupertinoIcons.sun_max_fill,
                       color: accent,
-                      size: 20,
+                      size: 22,
                     ),
                   ),
-                  title: const Text('Dark'),
-                  trailing: CupertinoSwitch(
-                    activeTrackColor: accent,
-                    value: themeState.mode == ThemeMode.dark,
+                  title: const Text('Dark Mode'),
+                  trailing: AppSwitch(
+                    value: isDark,
                     onChanged: (enabled) {
                       ref.read(themeStateProvider.notifier).setThemeMode(
                             enabled ? ThemeMode.dark : ThemeMode.light,
-                          );
-                    },
-                  ),
-                ),
-                CupertinoListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: CupertinoColors.systemGrey.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                    child: const Icon(
-                      CupertinoIcons.device_phone_portrait,
-                      color: CupertinoColors.systemGrey,
-                      size: 20,
-                    ),
-                  ),
-                  title: const Text('System'),
-                  trailing: CupertinoSwitch(
-                    activeTrackColor: accent,
-                    value: themeState.mode == ThemeMode.system,
-                    onChanged: (enabled) {
-                      ref.read(themeStateProvider.notifier).setThemeMode(
-                            enabled ? ThemeMode.system : (isDark ? ThemeMode.dark : ThemeMode.light),
                           );
                     },
                   ),
@@ -263,36 +237,42 @@ class SettingsPage extends ConsumerWidget {
                   final isPrivate = privacy == 'private';
 
                   return CupertinoListSection.insetGrouped(
+                    margin: EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md, vertical: 6),
                     backgroundColor: AppColors.background(isDark),
                     header: const Text('Privacy'),
                     children: [
                       CupertinoListTile(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 4),
                         leading: Container(
                           padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
-                            color: CupertinoColors.systemIndigo.withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(7),
+                            color: AppColors.surfaceContainer(isDark),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             CupertinoIcons.lock_shield_fill,
-                            color: CupertinoColors.systemIndigo,
-                            size: 20,
+                            color: accent,
+                            size: 22,
                           ),
                         ),
                         title: const Text('Private Account'),
                         subtitle: Text(
-                          isPrivate ? 'Only approved followers can see details' : 'Anyone can view your profile',
+                          isPrivate
+                              ? 'Only approved followers can see details'
+                              : 'Anyone can view your profile',
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary(isDark),
                           ),
                         ),
-                        trailing: CupertinoSwitch(
-                          activeTrackColor: accent,
+                        trailing: AppSwitch(
                           value: isPrivate,
                           onChanged: (val) {
                             final newMode = val ? 'private' : 'public';
-                            _showPrivacyConfirmation(context, newMode, currentUserId);
+                            _showPrivacyConfirmation(
+                                context, newMode, currentUserId);
                           },
                         ),
                       ),
@@ -301,22 +281,29 @@ class SettingsPage extends ConsumerWidget {
                 },
               ),
 
+            // ── Google Drive & Storage Section ──
+            _StorageSection(isDark: isDark, accent: accent),
+
             // ── Safety & About Section ──
             CupertinoListSection.insetGrouped(
+              margin:
+                  EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
               backgroundColor: AppColors.background(isDark),
               header: const Text('Safety & About'),
               children: [
                 CupertinoListTile(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   leading: Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: CupertinoColors.systemRed.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(7),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(
                       CupertinoIcons.person_badge_minus,
                       color: CupertinoColors.systemRed,
-                      size: 20,
+                      size: 22,
                     ),
                   ),
                   title: const Text('Blocked Users'),
@@ -324,21 +311,24 @@ class SettingsPage extends ConsumerWidget {
                   onTap: () {
                     Navigator.push(
                       context,
-                      CupertinoPageRoute(builder: (_) => const BlockedUsersScreen()),
+                      CupertinoPageRoute(
+                          builder: (_) => const BlockedUsersScreen()),
                     );
                   },
                 ),
                 CupertinoListTile(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   leading: Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(7),
+                      color: AppColors.surfaceContainer(isDark),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
                       CupertinoIcons.info_circle_fill,
                       color: accent,
-                      size: 20,
+                      size: 22,
                     ),
                   ),
                   title: const Text('About'),
@@ -355,25 +345,31 @@ class SettingsPage extends ConsumerWidget {
 
             // ── Account / Danger Zone ──
             CupertinoListSection.insetGrouped(
+              margin:
+                  EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
               backgroundColor: AppColors.background(isDark),
               header: const Text('Account'),
               children: [
                 CupertinoListTile(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   leading: Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: CupertinoColors.systemRed.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(7),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(
                       CupertinoIcons.square_arrow_right,
                       color: CupertinoColors.systemRed,
-                      size: 20,
+                      size: 22,
                     ),
                   ),
                   title: const Text(
                     'Log Out',
-                    style: TextStyle(color: CupertinoColors.systemRed, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        color: CupertinoColors.systemRed,
+                        fontWeight: FontWeight.w600),
                   ),
                   onTap: () => _confirmLogout(context, ref),
                 ),
@@ -395,7 +391,8 @@ class SettingsPage extends ConsumerWidget {
     GlassDialog.showConfirmation(
       context: context,
       title: 'Profile Visibility',
-      message: 'Are you sure you want to set your profile visibility to $modeText?',
+      message:
+          'Are you sure you want to set your profile visibility to $modeText?',
       confirmLabel: 'Set to $modeText',
       onConfirm: () async {
         await FirebaseFirestore.instance
@@ -416,14 +413,7 @@ class SettingsPage extends ConsumerWidget {
       confirmLabel: 'Log Out',
       isDestructive: true,
       onConfirm: () async {
-        final uid = ref.read(currentUserIdProvider);
-        if (uid.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection("Users")
-              .doc(uid)
-              .update({"online": false});
-        }
-        await FirebaseAuth.instance.signOut();
+        await AuthService.instance.signOut();
         if (context.mounted) {
           Navigator.pushAndRemoveUntil(
             context,
@@ -432,6 +422,188 @@ class SettingsPage extends ConsumerWidget {
           );
         }
       },
+    );
+  }
+}
+
+/// Google Drive media usage and local offline cache management section.
+class _StorageSection extends StatefulWidget {
+  final bool isDark;
+  final Color accent;
+
+  const _StorageSection({required this.isDark, required this.accent});
+
+  @override
+  State<_StorageSection> createState() => _StorageSectionState();
+}
+
+class _StorageSectionState extends State<_StorageSection> {
+  int _driveBytes = 0;
+  int _driveFiles = 0;
+  int _localCacheBytes = 0;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMetrics();
+  }
+
+  Future<void> _loadMetrics() async {
+    setState(() => _loading = true);
+    try {
+      final driveUsage = await DriveService.instance.getStorageUsage();
+      final localBytes = await MediaCacheService.instance.getCacheSize();
+      if (mounted) {
+        setState(() {
+          _driveBytes = driveUsage['totalBytes'] as int? ?? 0;
+          _driveFiles = driveUsage['fileCount'] as int? ?? 0;
+          _localCacheBytes = localBytes;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  void _clearLocalCache() {
+    GlassDialog.showConfirmation(
+      context: context,
+      title: 'Clear Local Cache',
+      message:
+          'This will remove downloaded media files from your device storage. They can be re-downloaded from Google Drive at any time.',
+      confirmLabel: 'Clear Cache',
+      isDestructive: true,
+      onConfirm: () async {
+        await MediaCacheService.instance.clearCache();
+        _loadMetrics();
+      },
+    );
+  }
+
+  void _deleteAllDriveMedia() {
+    GlassDialog.showConfirmation(
+      context: context,
+      title: 'Delete Drive Media',
+      message:
+          'Are you sure you want to delete all files stored in your QuickMessenger Google Drive folder? This action cannot be undone.',
+      confirmLabel: 'Delete All',
+      isDestructive: true,
+      onConfirm: () async {
+        await DriveService.instance.deleteAllAppMedia();
+        _loadMetrics();
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final accent = CupertinoTheme.of(context).primaryColor;
+
+    return CupertinoListSection.insetGrouped(
+      margin: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
+      backgroundColor: AppColors.background(widget.isDark),
+      header: const Text('Google Drive & Storage'),
+      children: [
+        CupertinoListTile(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainer(isDark),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              CupertinoIcons.cloud_fill,
+              color: accent,
+              size: 22,
+            ),
+          ),
+          title: const Text('Google Drive Media'),
+          subtitle: Text(
+            _loading
+                ? 'Calculating usage...'
+                : '$_driveFiles files • ${_formatBytes(_driveBytes)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary(widget.isDark),
+            ),
+          ),
+          trailing: CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: _loading ? null : _loadMetrics,
+            child: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
+          ),
+        ),
+        CupertinoListTile(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainer(isDark),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              CupertinoIcons.device_phone_portrait,
+              color: accent,
+              size: 22,
+            ),
+          ),
+          title: const Text('Offline Local Cache'),
+          subtitle: Text(
+            _loading ? 'Calculating...' : _formatBytes(_localCacheBytes),
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary(widget.isDark),
+            ),
+          ),
+          trailing: CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: _localCacheBytes > 0 ? _clearLocalCache : null,
+            child: Text(
+              'Clear',
+              style: TextStyle(
+                fontSize: 13,
+                color: _localCacheBytes > 0
+                    ? CupertinoColors.systemRed
+                    : AppColors.textMuted(widget.isDark),
+              ),
+            ),
+          ),
+        ),
+        CupertinoListTile(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemRed.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              CupertinoIcons.trash,
+              color: CupertinoColors.systemRed,
+              size: 22,
+            ),
+          ),
+          title: const Text(
+            'Delete All Drive Media',
+            style: TextStyle(color: CupertinoColors.systemRed),
+          ),
+          trailing: const CupertinoListTileChevron(),
+          onTap: _deleteAllDriveMedia,
+        ),
+      ],
     );
   }
 }

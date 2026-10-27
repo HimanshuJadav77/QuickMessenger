@@ -35,8 +35,7 @@ class _TypingIndicatorBubbleState extends State<TypingIndicatorBubble>
 
   @override
   Widget build(BuildContext context) {
-    final isDark =
-        CupertinoTheme.of(context).brightness == Brightness.dark;
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -77,8 +76,7 @@ class _TypingIndicatorBubbleState extends State<TypingIndicatorBubble>
                   decoration: BoxDecoration(
                     color: isActive
                         ? CupertinoTheme.of(context).primaryColor
-                        : AppColors.textMuted(isDark)
-                            .withValues(alpha: 0.5),
+                        : AppColors.textMuted(isDark).withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
                 );
@@ -90,4 +88,3 @@ class _TypingIndicatorBubbleState extends State<TypingIndicatorBubble>
     );
   }
 }
-

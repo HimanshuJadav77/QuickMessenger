@@ -66,6 +66,7 @@ class AppMotion {
   static const Duration messageDeleteDuration = microModerate;
   static const Curve messageDeleteCurve = easeOutQuart;
 
-  static const Duration typingIndicatorPulseDuration = Duration(milliseconds: 600);
+  static const Duration typingIndicatorPulseDuration =
+      Duration(milliseconds: 600);
   static const Curve typingIndicatorPulseCurve = easeInOut;
 }

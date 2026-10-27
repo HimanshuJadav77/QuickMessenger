@@ -23,19 +23,52 @@ class ConversationModel {
     this.isMuted = false,
   });
 
-  factory ConversationModel.fromMap(Map<String, dynamic> map) {
+  /// Exact match constructor for SQLite database rows.
+  factory ConversationModel.fromDb(Map<String, dynamic> map) {
     return ConversationModel(
-      id: map['id'] ?? map['conversationId'] ?? '',
-      participantId: map['participant_id'] ?? map['participantId'] ?? '',
-      participantName: map['participant_name'] ?? map['participantName'] ?? 'User',
-      participantImageUrl: map['participant_imageurl'] ?? map['participantImageUrl'] ?? '',
-      lastMessage: map['last_message'] ?? map['lastMessage'] ?? '',
-      lastTimestamp: map['last_timestamp'] ?? map['lastTimestamp'] ?? DateTime.now().toIso8601String(),
-      unreadCount: map['unread_count'] ?? map['unreadCount'] ?? 0,
-      isPinned: map['is_pinned'] == 1 || map['is_pinned'] == true || map['isPinned'] == true,
-      isArchived: map['is_archived'] == 1 || map['is_archived'] == true || map['isArchived'] == true,
-      isMuted: map['is_muted'] == 1 || map['is_muted'] == true || map['isMuted'] == true,
+      id: (map['id'] ?? '').toString(),
+      participantId: (map['participant_id'] ?? '').toString(),
+      participantName: (map['participant_name'] ?? 'User').toString(),
+      participantImageUrl: (map['participant_imageurl'] ?? '').toString(),
+      lastMessage: (map['last_message'] ?? '').toString(),
+      lastTimestamp: (map['last_timestamp'] ?? '').toString().isNotEmpty
+          ? map['last_timestamp'].toString()
+          : DateTime.now().toIso8601String(),
+      unreadCount: map['unread_count'] is int
+          ? map['unread_count'] as int
+          : int.tryParse(map['unread_count']?.toString() ?? '0') ?? 0,
+      isPinned: map['is_pinned'] == 1,
+      isArchived: map['is_archived'] == 1,
+      isMuted: map['is_muted'] == 1,
     );
+  }
+
+  /// Exact match constructor for Server / Socket.IO / Firestore payloads.
+  factory ConversationModel.fromServer(Map<String, dynamic> map) {
+    return ConversationModel(
+      id: (map['conversationId'] ?? map['id'] ?? '').toString(),
+      participantId: (map['participantId'] ?? '').toString(),
+      participantName: (map['participantName'] ?? 'User').toString(),
+      participantImageUrl: (map['participantImageUrl'] ?? '').toString(),
+      lastMessage: (map['lastMessage'] ?? '').toString(),
+      lastTimestamp: (map['lastTimestamp'] ?? '').toString().isNotEmpty
+          ? map['lastTimestamp'].toString()
+          : DateTime.now().toIso8601String(),
+      unreadCount: map['unreadCount'] is int
+          ? map['unreadCount'] as int
+          : int.tryParse(map['unreadCount']?.toString() ?? '0') ?? 0,
+      isPinned: map['isPinned'] == true,
+      isArchived: map['isArchived'] == true,
+      isMuted: map['isMuted'] == true,
+    );
+  }
+
+  /// Unified constructor dispatching directly to [fromDb] or [fromServer].
+  factory ConversationModel.fromMap(Map<String, dynamic> map) {
+    if (map.containsKey('participant_id') || map.containsKey('last_message')) {
+      return ConversationModel.fromDb(map);
+    }
+    return ConversationModel.fromServer(map);
   }
 
   Map<String, dynamic> toMap() {
@@ -75,4 +108,3 @@ class ConversationModel {
     );
   }
 }
-

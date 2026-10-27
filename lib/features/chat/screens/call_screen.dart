@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -26,11 +27,61 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
   Timer? _callTimer;
   int _callDurationSeconds = 0;
+  int _callQuality = 0; // 0=unknown, 1=good, 2=poor
+
+  // Proximity sensor
+  StreamSubscription<UserAccelerometerEvent>? _proximitySubscription;
+  bool _isScreenOff = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToCallQuality();
+    _initProximitySensor();
+  }
+
+  void _initProximitySensor() {
+    // Use accelerometer as proximity approximation (screen face down / near ear)
+    // For true proximity sensor, platform-specific code would be needed
+    _proximitySubscription = userAccelerometerEventStream().listen((event) {
+      if (!mounted) return;
+
+      // Detect when phone is near ear (z-axis ~ -9.8 when upright near ear)
+      // When phone is flat, z ~ 0; when upright near ear, z ~ -9.8
+      final isNearEar = event.z < -7.0 && event.z > -12.0;
+
+      if (isNearEar && !_isScreenOff) {
+        _turnScreenOff();
+      } else if (!isNearEar && _isScreenOff) {
+        _turnScreenOn();
+      }
+    });
+  }
+
+  void _turnScreenOff() {
+    setState(() => _isScreenOff = true);
+    // The screen will be turned off by the OS when proximity is detected
+    // This is a hint - actual screen off is handled by OS proximity sensor
+  }
+
+  void _turnScreenOn() {
+    setState(() => _isScreenOff = false);
+  }
 
   @override
   void dispose() {
+    _proximitySubscription?.cancel();
     _callTimer?.cancel();
     super.dispose();
+  }
+
+  void _listenToCallQuality() {
+    final callNotifier = ref.read(callServiceProvider.notifier);
+    callNotifier.onCallQualityChanged = (quality) {
+      if (mounted) {
+        setState(() => _callQuality = quality.index);
+      }
+    };
   }
 
   void _startTimer() {
@@ -50,7 +101,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = AppColors.isDarkMode(context);
     final call = ref.watch(callServiceProvider);
     final callNotifier = ref.watch(callServiceProvider.notifier);
 
@@ -70,7 +121,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: CupertinoColors.systemYellow.withValues(alpha: 0.16),
+                      color:
+                          CupertinoColors.systemYellow.withValues(alpha: 0.16),
                     ),
                     child: const Icon(
                       CupertinoIcons.exclamationmark_triangle_fill,
@@ -97,13 +149,15 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                   SizedBox(height: AppSpacing.xl),
                   CupertinoButton.filled(
                     borderRadius: BorderRadius.circular(12),
-                    child: const Text('Dismiss', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: const Text('Dismiss',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ] else ...[
                   Text(
                     'Call Ended',
-                    style: AppTypography.headingMedium.copyWith(color: AppColors.textPrimary(isDark)),
+                    style: AppTypography.headingMedium
+                        .copyWith(color: AppColors.textPrimary(isDark)),
                   ),
                 ],
               ],
@@ -121,14 +175,20 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
     final isVideoCall = call.callType == CallType.video;
     final engine = callNotifier.engine;
-    final hasRemoteVideo = isVideoCall && call.status == CallStatus.connected && call.remoteUid != null && engine != null;
+    final hasRemoteVideo = isVideoCall &&
+        call.status == CallStatus.connected &&
+        call.remoteUid != null &&
+        engine != null;
 
     final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
     final isCaller = call.callerId == currentUserId;
     final displayName = isCaller
-        ? (call.receiverName?.isNotEmpty == true ? call.receiverName! : 'Calling...')
+        ? (call.receiverName?.isNotEmpty == true
+            ? call.receiverName!
+            : 'Calling...')
         : call.callerName;
-    final displayAvatar = isCaller ? (call.receiverAvatar ?? '') : call.callerAvatar;
+    final displayAvatar =
+        isCaller ? (call.receiverAvatar ?? '') : call.callerAvatar;
 
     return Scaffold(
       body: Container(
@@ -196,25 +256,31 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                 children: [
                   // Top Bar
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+                    padding: EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg, vertical: AppSpacing.md),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
-                          icon: Icon(CupertinoIcons.chevron_down, color: AppColors.textPrimary(isDark), size: AppSpacing.xl),
+                          icon: Icon(CupertinoIcons.chevron_down,
+                              color: AppColors.textPrimary(isDark),
+                              size: AppSpacing.xl),
                           onPressed: () => Navigator.of(context).pop(),
                         ),
                         Row(
                           children: [
-                            Icon(CupertinoIcons.lock, color: AppColors.textSecondary(isDark), size: AppSpacing.xs),
+                            Icon(CupertinoIcons.lock,
+                                color: AppColors.textSecondary(isDark),
+                                size: AppSpacing.xs),
                             SizedBox(width: AppSpacing.xs),
                             Text(
-                              'End-to-end Encrypted',
-                              style: AppTypography.caption.copyWith(color: AppColors.textSecondary(isDark)),
+                              'Secure Call',
+                              style: AppTypography.caption.copyWith(
+                                  color: AppColors.textSecondary(isDark)),
                             ),
                           ],
                         ),
-                        SizedBox(width: AppSpacing.xl),
+                        _buildQualityIndicator(isDark),
                       ],
                     ),
                   ),
@@ -231,9 +297,14 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                               height: 160,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Theme.of(context).colorScheme.primary.withValues(
-                                  alpha: call.status == CallStatus.ringing ? 0.3 : 0.1,
-                                ),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(
+                                      alpha: call.status == CallStatus.ringing
+                                          ? 0.3
+                                          : 0.1,
+                                    ),
                               ),
                             ),
                             UserAvatar(
@@ -246,12 +317,14 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                         SizedBox(height: AppSpacing.lg),
                         Text(
                           displayName,
-                          style: AppTypography.display.copyWith(color: AppColors.textPrimary(isDark)),
+                          style: AppTypography.display
+                              .copyWith(color: AppColors.textPrimary(isDark)),
                         ),
                         SizedBox(height: AppSpacing.xs),
                         Text(
                           _getStatusText(call.status),
-                          style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary(isDark)),
+                          style: AppTypography.bodyMedium
+                              .copyWith(color: AppColors.textSecondary(isDark)),
                         ),
                       ],
                     )
@@ -260,10 +333,12 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
                   // Bottom Controls inside SafeArea
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                    padding: EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
                     child: LiquidGlassContainer(
                       customRadius: BorderRadius.circular(28),
-                      padding: EdgeInsets.symmetric(vertical: AppSpacing.md, horizontal: AppSpacing.sm),
+                      padding: EdgeInsets.symmetric(
+                          vertical: AppSpacing.md, horizontal: AppSpacing.sm),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -274,7 +349,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
                                 _buildControlButton(
-                                  icon: _isMuted ? CupertinoIcons.mic_slash : CupertinoIcons.mic,
+                                  icon: _isMuted
+                                      ? CupertinoIcons.mic_slash
+                                      : CupertinoIcons.mic,
                                   label: _isMuted ? 'Unmute' : 'Mute',
                                   isActive: _isMuted,
                                   onTap: () {
@@ -285,7 +362,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                                 ),
                                 if (isVideoCall) ...[
                                   _buildControlButton(
-                                    icon: _isVideoOn ? CupertinoIcons.video_camera : CupertinoIcons.video_camera_solid,
+                                    icon: _isVideoOn
+                                        ? CupertinoIcons.video_camera
+                                        : CupertinoIcons.video_camera_solid,
                                     label: _isVideoOn ? 'Camera' : 'Camera Off',
                                     isActive: !_isVideoOn,
                                     onTap: () {
@@ -303,11 +382,14 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                                   ),
                                 ],
                                 _buildControlButton(
-                                  icon: _isSpeakerOn ? CupertinoIcons.volume_up : CupertinoIcons.volume_down,
+                                  icon: _isSpeakerOn
+                                      ? CupertinoIcons.volume_up
+                                      : CupertinoIcons.volume_down,
                                   label: 'Speaker',
                                   isActive: _isSpeakerOn,
                                   onTap: () {
-                                    setState(() => _isSpeakerOn = !_isSpeakerOn);
+                                    setState(
+                                        () => _isSpeakerOn = !_isSpeakerOn);
                                     callNotifier.toggleSpeaker(_isSpeakerOn);
                                   },
                                   isDark: isDark,
@@ -366,16 +448,22 @@ class _CallScreenState extends ConsumerState<CallScreen> {
             height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isActive ? AppColors.textPrimary(isDark) : AppColors.glassFill(isDark),
+              color: isActive
+                  ? AppColors.textPrimary(isDark)
+                  : AppColors.glassFill(isDark),
               border: Border.all(
-                color: isActive ? Colors.transparent : AppColors.glassBorder(isDark),
+                color: isActive
+                    ? Colors.transparent
+                    : AppColors.glassBorder(isDark),
                 width: 1,
               ),
             ),
             child: Center(
               child: Icon(
                 icon,
-                color: isActive ? AppColors.background(isDark) : AppColors.textPrimary(isDark),
+                color: isActive
+                    ? AppColors.background(isDark)
+                    : AppColors.textPrimary(isDark),
                 size: 22,
               ),
             ),
@@ -419,6 +507,69 @@ class _CallScreenState extends ConsumerState<CallScreen> {
             color: Colors.white,
             size: 28,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQualityIndicator(bool isDark) {
+    Color color;
+    String tooltip;
+    switch (_callQuality) {
+      case 2: // QualityType.good
+      case 3: // QualityType.excellent
+        color = CupertinoColors.systemGreen;
+        tooltip = 'Excellent';
+        break;
+      case 4: // QualityType.poor
+      case 5: // QualityType.bad
+      case 6: // QualityType.vBad
+      case 7: // QualityType.down
+        color = CupertinoColors.systemRed;
+        tooltip = 'Poor';
+        break;
+      case 0: // QualityType.unknown
+      case 1: // QualityType.testing
+      default:
+        color = CupertinoColors.systemYellow;
+        tooltip = 'Connecting...';
+        break;
+    }
+
+    return Tooltip(
+      message: 'Call Quality: $tooltip',
+      child: Container(
+        padding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(AppSpacing.sm),
+          border: Border.all(color: color.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                boxShadow: [
+                  BoxShadow(
+                      color: color.withValues(alpha: 0.6),
+                      blurRadius: 4,
+                      spreadRadius: 1),
+                ],
+              ),
+            ),
+            SizedBox(width: AppSpacing.xs),
+            Text(
+              tooltip,
+              style: AppTypography.caption
+                  .copyWith(color: color, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ),
     );

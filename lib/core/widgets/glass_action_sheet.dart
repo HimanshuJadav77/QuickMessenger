@@ -58,7 +58,8 @@ class LGActionSheet {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -66,7 +67,8 @@ class LGActionSheet {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
                       child: BackdropFilter(
-                        filter: dart_ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                        filter:
+                            dart_ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                         child: Container(
                           decoration: BoxDecoration(
                             color: isDark
@@ -89,7 +91,8 @@ class LGActionSheet {
                                 Divider(
                                   height: 0.5,
                                   thickness: 0.5,
-                                  color: isDark ? Colors.white12 : Colors.black12,
+                                  color:
+                                      isDark ? Colors.white12 : Colors.black12,
                                 ),
                               ] else if (title != null || message != null) ...[
                                 Padding(
@@ -125,7 +128,8 @@ class LGActionSheet {
                                 Divider(
                                   height: 0.5,
                                   thickness: 0.5,
-                                  color: isDark ? Colors.white12 : Colors.black12,
+                                  color:
+                                      isDark ? Colors.white12 : Colors.black12,
                                 ),
                               ],
 
@@ -162,7 +166,8 @@ class LGActionSheet {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
                       child: BackdropFilter(
-                        filter: dart_ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                        filter:
+                            dart_ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                         child: Container(
                           width: double.infinity,
                           decoration: BoxDecoration(
@@ -185,10 +190,12 @@ class LGActionSheet {
                             },
                             child: Text(
                               cancelTitle,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
-                                color: CupertinoColors.activeBlue,
+                                color: isDark
+                                    ? CupertinoColors.white
+                                    : CupertinoColors.black,
                               ),
                             ),
                           ),
@@ -283,9 +290,8 @@ class _ActionItem extends StatelessWidget {
                 action.title,
                 style: TextStyle(
                   fontSize: 15,
-                  fontWeight: action.isDefault
-                      ? FontWeight.w600
-                      : FontWeight.w500,
+                  fontWeight:
+                      action.isDefault ? FontWeight.w600 : FontWeight.w500,
                   color: textColor,
                 ),
                 maxLines: 1,
@@ -299,5 +305,3 @@ class _ActionItem extends StatelessWidget {
     );
   }
 }
-
-

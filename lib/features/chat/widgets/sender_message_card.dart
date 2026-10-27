@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/app_colors.dart';
 
 class Sendcard extends StatelessWidget {
   const Sendcard({
@@ -36,7 +37,9 @@ class Sendcard extends StatelessWidget {
                     topLeft: Radius.circular(30),
                     bottomLeft: Radius.circular(30),
                     bottomRight: Radius.circular(30))),
-            color: Colors.blue,
+            color: AppColors.isDarkMode(context)
+                ? const Color(0xFF2C2C2E)
+                : const Color(0xFF1C1C1E),
             child: Stack(
               children: [
                 Padding(
@@ -54,7 +57,6 @@ class Sendcard extends StatelessWidget {
                       time,
                       style: TextStyle(fontSize: 12, color: Colors.white),
                     )),
-
                 Positioned(
                   bottom: 5,
                   right: 20,

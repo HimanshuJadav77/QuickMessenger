@@ -19,11 +19,14 @@ class SocketService {
   io.Socket? _socket;
   bool _isConnected = false;
   String? _activeConversationId;
+  Timer? _heartbeatTimer;
+  DateTime? _lastPong;
 
   bool get isConnected => _isConnected || (_socket?.connected ?? false);
   String? get activeConversationId => _activeConversationId;
 
-  final StreamController<bool> _connectionStateController = StreamController<bool>.broadcast();
+  final StreamController<bool> _connectionStateController =
+      StreamController<bool>.broadcast();
   Stream<bool> get connectionStateStream => _connectionStateController.stream;
 
   // Callbacks for 1-on-1 chat
@@ -53,11 +56,16 @@ class SocketService {
   void Function(Map<String, dynamic> data)? onGroupTypingStart;
   void Function(Map<String, dynamic> data)? onGroupTypingStop;
 
-  final StreamController<Map<String, dynamic>> _groupCreatedStreamController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _groupMessageReceivedStreamController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _groupCreatedStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>>
+      _groupMessageReceivedStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
-  Stream<Map<String, dynamic>> get onGroupCreatedStream => _groupCreatedStreamController.stream;
-  Stream<Map<String, dynamic>> get onGroupMessageReceivedStream => _groupMessageReceivedStreamController.stream;
+  Stream<Map<String, dynamic>> get onGroupCreatedStream =>
+      _groupCreatedStreamController.stream;
+  Stream<Map<String, dynamic>> get onGroupMessageReceivedStream =>
+      _groupMessageReceivedStreamController.stream;
 
   Future<void> connect() async {
     if (_socket != null && _socket!.connected) return;
@@ -74,7 +82,8 @@ class SocketService {
       return;
     }
 
-    debugPrint("[SocketService] Connecting to $serverUrl for user ${user.uid}...");
+    debugPrint(
+        "[SocketService] Connecting to $serverUrl for user ${user.uid}...");
 
     _socket?.dispose();
 
@@ -94,6 +103,20 @@ class SocketService {
     _socket!.connect();
   }
 
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+      if (_socket?.connected == true) {
+        _socket?.emit('ping', {'t': DateTime.now().millisecondsSinceEpoch});
+      }
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
   void _registerListeners() {
     if (_socket == null) return;
 
@@ -101,6 +124,7 @@ class SocketService {
       debugPrint("[SocketService] Connected successfully!");
       _isConnected = true;
       _connectionStateController.add(true);
+      _startHeartbeat();
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
         _socket!.emit('user_connected', {'userId': uid});
@@ -110,11 +134,19 @@ class SocketService {
     _socket!.onDisconnect((reason) {
       debugPrint("[SocketService] Disconnected: $reason");
       _isConnected = false;
+      _stopHeartbeat();
       _connectionStateController.add(false);
     });
 
+    _socket!.on('pong', (data) {
+      _lastPong = DateTime.now();
+      debugPrint(
+          "[SocketService] Pong received: ${DateTime.now().difference(_lastPong ?? DateTime.now()).inMilliseconds}ms");
+    });
+
     _socket!.onConnectError((err) {
-      debugPrint("[SocketService] ❌ Connect Error: $err. Check if server at $serverUrl is running and accessible.");
+      debugPrint(
+          "[SocketService] ❌ Connect Error: $err. Check if server at $serverUrl is running and accessible.");
       _isConnected = false;
       _connectionStateController.add(false);
     });
@@ -315,7 +347,6 @@ class SocketService {
     });
   }
 
-
   void emitCallOffer(Map<String, dynamic> callData) {
     if (_socket == null) return;
     _socket!.emit('call_offer', callData);
@@ -360,6 +391,10 @@ class SocketService {
     String? replyToText,
     String? replyToSenderId,
     required String clientCreatedAt,
+    String? fileUrl,
+    String? driveFileId,
+    String? fileName,
+    int? fileSize,
   }) {
     final payload = {
       'messageId': messageId,
@@ -370,10 +405,15 @@ class SocketService {
       'replyToText': replyToText,
       'replyToSenderId': replyToSenderId,
       'clientCreatedAt': clientCreatedAt,
+      if (fileUrl != null) 'fileUrl': fileUrl,
+      if (driveFileId != null) 'driveFileId': driveFileId,
+      if (fileName != null) 'fileName': fileName,
+      if (fileSize != null) 'fileSize': fileSize,
     };
 
     if (_socket == null || !_socket!.connected) {
-      debugPrint("[SocketService] Socket disconnected. Auto-connecting to send message $messageId...");
+      debugPrint(
+          "[SocketService] Socket disconnected. Auto-connecting to send message $messageId...");
       connect().then((_) {
         _socket?.emit('send_message', payload);
       });
@@ -382,7 +422,6 @@ class SocketService {
 
     _socket!.emit('send_message', payload);
   }
-
 
   void emitCreateGroup({
     required String groupId,
@@ -401,7 +440,7 @@ class SocketService {
     });
   }
 
-void emitSendGroupMessage({
+  void emitSendGroupMessage({
     required String messageId,
     required String groupId,
     String? senderName,
@@ -470,14 +509,18 @@ void emitSendGroupMessage({
     });
   }
 
-  void emitGroupTypingStart({required String groupId, required List<String> memberUids}) {
+  void emitGroupTypingStart(
+      {required String groupId, required List<String> memberUids}) {
     if (_socket == null) return;
-    _socket!.emit('group_typing_start', {'groupId': groupId, 'memberUids': memberUids});
+    _socket!.emit(
+        'group_typing_start', {'groupId': groupId, 'memberUids': memberUids});
   }
 
-  void emitGroupTypingStop({required String groupId, required List<String> memberUids}) {
+  void emitGroupTypingStop(
+      {required String groupId, required List<String> memberUids}) {
     if (_socket == null) return;
-    _socket!.emit('group_typing_stop', {'groupId': groupId, 'memberUids': memberUids});
+    _socket!.emit(
+        'group_typing_stop', {'groupId': groupId, 'memberUids': memberUids});
   }
 
   void emitEditMessage({
@@ -534,10 +577,12 @@ void emitSendGroupMessage({
   void emitMarkRead({
     required String conversationId,
     required String senderId,
+    List<String>? messageIds,
   }) {
     final payload = {
       'conversationId': conversationId,
       'senderId': senderId,
+      if (messageIds != null && messageIds.isNotEmpty) 'messageIds': messageIds,
     };
 
     if (_socket == null || !_socket!.connected) {
@@ -549,7 +594,6 @@ void emitSendGroupMessage({
 
     _socket!.emit('mark_read', payload);
   }
-
 
   void emitDeleteForMe({
     required String conversationId,
@@ -608,7 +652,13 @@ void emitSendGroupMessage({
     });
   }
 
+  void emitSyncUnseen() {
+    if (_socket == null) return;
+    _socket!.emit('sync_unseen');
+  }
+
   void disconnect() {
+    _stopHeartbeat();
     _socket?.disconnect();
     _socket?.dispose();
     _socket = null;
@@ -616,4 +666,3 @@ void emitSendGroupMessage({
     _activeConversationId = null;
   }
 }
-

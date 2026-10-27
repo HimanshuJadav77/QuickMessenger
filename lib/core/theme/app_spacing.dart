@@ -19,5 +19,10 @@ class AppSpacing {
   static const SizedBox gapSm = SizedBox(width: sm, height: sm);
   static const SizedBox gapMd = SizedBox(width: md, height: md);
   static const SizedBox gapLg = SizedBox(width: lg, height: lg);
-}
 
+  // ── Standardized ListTile tokens ────────────────────────────────
+  static const EdgeInsets listTilePadding =
+      EdgeInsets.symmetric(horizontal: md, vertical: sm);
+  static const double listTileLeadingSize = 52.0;
+  static const double listTileLeadingToTitle = 12.0;
+}

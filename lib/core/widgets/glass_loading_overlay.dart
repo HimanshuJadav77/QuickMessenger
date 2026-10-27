@@ -18,7 +18,7 @@ class GlassLoadingOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = AppColors.isDarkMode(context);
     return Stack(
       children: [
         child,
@@ -31,7 +31,8 @@ class GlassLoadingOverlay extends StatelessWidget {
                   color: Colors.black.withValues(alpha: 0.35),
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 20),
                       decoration: BoxDecoration(
                         color: AppColors.glassFill(isDark),
                         borderRadius: BorderRadius.circular(16),
@@ -55,7 +56,8 @@ class GlassLoadingOverlay extends StatelessWidget {
                             height: 36,
                             child: CircularProgressIndicator(
                               strokeWidth: 3.5,
-                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppColors.primary),
                             ),
                           ),
                           if (message.isNotEmpty) ...[
@@ -81,6 +83,3 @@ class GlassLoadingOverlay extends StatelessWidget {
     );
   }
 }
-
-
-

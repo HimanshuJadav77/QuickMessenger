@@ -25,20 +25,56 @@ class GroupModel {
     this.unreadCount = 0,
   });
 
-  factory GroupModel.fromMap(Map<String, dynamic> map) {
+  /// Exact match constructor for SQLite database rows.
+  factory GroupModel.fromDb(Map<String, dynamic> map) {
     return GroupModel(
-      groupId: map['group_id'] ?? map['groupId'] ?? '',
-      name: map['name'] ?? '',
-      description: map['description'] ?? '',
-      imageUrl: map['image_url'] ?? map['imageUrl'] ?? '',
-      createdBy: map['created_by'] ?? map['createdBy'] ?? '',
-      createdAt: map['created_at'] ?? map['createdAt'] ?? '',
-      myRole: map['my_role'] ?? map['myRole'] ?? 'member',
-      memberCount: map['member_count'] ?? map['memberCount'] ?? 1,
-      lastMessage: map['last_message'] ?? map['lastMessage'],
-      lastTimestamp: map['last_timestamp'] ?? map['lastTimestamp'],
-      unreadCount: map['unread_count'] ?? map['unreadCount'] ?? 0,
+      groupId: (map['group_id'] ?? '').toString(),
+      name: (map['name'] ?? '').toString(),
+      description: (map['description'] ?? '').toString(),
+      imageUrl: (map['image_url'] ?? '').toString(),
+      createdBy: (map['created_by'] ?? '').toString(),
+      createdAt: (map['created_at'] ?? '').toString(),
+      myRole: (map['my_role'] ?? 'member').toString(),
+      memberCount: map['member_count'] is int
+          ? map['member_count'] as int
+          : int.tryParse(map['member_count']?.toString() ?? '1') ?? 1,
+      lastMessage: map['last_message']?.toString(),
+      lastTimestamp: map['last_timestamp']?.toString(),
+      unreadCount: map['unread_count'] is int
+          ? map['unread_count'] as int
+          : int.tryParse(map['unread_count']?.toString() ?? '0') ?? 0,
     );
+  }
+
+  /// Exact match constructor for Server / Socket.IO / Firestore payloads.
+  factory GroupModel.fromServer(Map<String, dynamic> map) {
+    return GroupModel(
+      groupId: (map['groupId'] ?? '').toString(),
+      name: (map['name'] ?? '').toString(),
+      description: (map['description'] ?? '').toString(),
+      imageUrl: (map['imageUrl'] ?? '').toString(),
+      createdBy: (map['createdBy'] ?? '').toString(),
+      createdAt: (map['createdAt'] ?? '').toString(),
+      myRole: (map['myRole'] ?? 'member').toString(),
+      memberCount: map['memberCount'] is int
+          ? map['memberCount'] as int
+          : (map['memberUids'] is List
+              ? (map['memberUids'] as List).length
+              : int.tryParse(map['memberCount']?.toString() ?? '1') ?? 1),
+      lastMessage: map['lastMessage']?.toString(),
+      lastTimestamp: map['lastTimestamp']?.toString(),
+      unreadCount: map['unreadCount'] is int
+          ? map['unreadCount'] as int
+          : int.tryParse(map['unreadCount']?.toString() ?? '0') ?? 0,
+    );
+  }
+
+  /// Unified constructor dispatching directly to [fromDb] or [fromServer].
+  factory GroupModel.fromMap(Map<String, dynamic> map) {
+    if (map.containsKey('group_id') || map.containsKey('created_by')) {
+      return GroupModel.fromDb(map);
+    }
+    return GroupModel.fromServer(map);
   }
 
   Map<String, dynamic> toMap() {
@@ -85,4 +121,3 @@ class GroupModel {
     );
   }
 }
-

@@ -8,6 +8,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:quick_messenger/core/database/local_database_helper.dart';
 import 'package:quick_messenger/core/providers/auth_providers.dart';
 import 'package:quick_messenger/core/services/call_service.dart';
 import 'package:quick_messenger/core/services/navigation_service.dart';
@@ -70,22 +71,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void initState() {
     super.initState();
     _checkBlocked();
-    _blockedByUser();
     WidgetsBinding.instance.addObserver(this);
     NetworkCheck().initializeInternetStatus(context);
     SocketService.instance.connect();
-    // Mark conversation as read when opened and notify socket of active conversation.
+    // Mark conversation as read and sync messages when opened
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
       if (uid.isNotEmpty) {
-        final convId = ref.read(chatRepositoryProvider).getConversationId(uid, widget.participantId);
-        ref.read(chatMessagesProvider(convId).notifier).markAsRead(widget.participantId);
+        final convId = ref
+            .read(chatRepositoryProvider)
+            .getConversationId(uid, widget.participantId);
+        ref
+            .read(chatMessagesProvider(convId).notifier)
+            .markAsRead(widget.participantId);
         SocketService.instance.emitSetActiveConversation(convId);
         ref.read(chatRepositoryProvider).syncMessages(convId);
       }
     });
+
+    // Pagination: load older messages when scrolling to top
+    _scrollController.addListener(_onScroll);
   }
 
+  void _onScroll() {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final convId = uid.isNotEmpty
+        ? ref
+            .read(chatRepositoryProvider)
+            .getConversationId(uid, widget.participantId)
+        : widget.participantId;
+    if (_scrollController.hasClients &&
+        _scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 150 &&
+        !ref.read(chatMessagesProvider(convId).notifier).isLoadingMore &&
+        ref.read(chatMessagesProvider(convId).notifier).hasMore) {
+      ref.read(chatMessagesProvider(convId).notifier).loadMore();
+    }
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -93,9 +115,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (uid == null) return;
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      FirebaseFirestore.instance.collection("Users").doc(uid).update({"online": false});
+      FirebaseFirestore.instance
+          .collection("Users")
+          .doc(uid)
+          .update({"online": false});
     } else if (state == AppLifecycleState.resumed) {
-      FirebaseFirestore.instance.collection("Users").doc(uid).update({"online": true});
+      FirebaseFirestore.instance
+          .collection("Users")
+          .doc(uid)
+          .update({"online": true});
+      // Re-mark conversation as read on resume
+      final convId = ref
+          .read(chatRepositoryProvider)
+          .getConversationId(uid, widget.participantId);
+      ref
+          .read(chatMessagesProvider(convId).notifier)
+          .markAsRead(widget.participantId);
     }
   }
 
@@ -109,38 +144,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     super.dispose();
   }
 
-
   Future<void> _checkBlocked() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection("block")
-        .doc(uid)
-        .collection("blockedid")
-        .doc(widget.participantId)
-        .get();
-    if (doc.exists && doc.data()?["blocked"] == true) {
-      if (mounted) setState(() => _blocked = true);
-    }
-  }
-
-  Future<void> _blockedByUser() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection("block")
-        .doc(widget.participantId)
-        .collection("blockedid")
-        .doc(uid)
-        .get();
-    if (!doc.exists) {
-      await FirebaseFirestore.instance
+    try {
+      final doc = await FirebaseFirestore.instance
           .collection("block")
-          .doc(widget.participantId)
-          .collection("blockedid")
           .doc(uid)
-          .set({"blocked": false});
-    }
+          .collection("blockedid")
+          .doc(widget.participantId)
+          .get(const GetOptions(source: Source.serverAndCache));
+      if (doc.exists && doc.data()?["blocked"] == true) {
+        if (mounted) setState(() => _blocked = true);
+      }
+    } catch (_) {}
   }
 
   void _openProfile() async {
@@ -194,9 +211,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       return;
     }
     final callId = '${uid}_${DateTime.now().millisecondsSinceEpoch}';
-    final userDoc = await FirebaseFirestore.instance.collection('Users').doc(uid).get();
-    final callerName = userDoc.data()?['name'] ?? userDoc.data()?['username'] ?? 'User';
-    final callerAvatar = userDoc.data()?['imageurl'] ?? '';
+    String callerName = 'User';
+    String callerAvatar = '';
+    try {
+      final localMe =
+          await LocalDatabaseHelper.instance.getUserProfile(uid, uid);
+      if (localMe != null &&
+          localMe['username'] != null &&
+          localMe['username'].toString().isNotEmpty) {
+        callerName = localMe['username'].toString();
+        callerAvatar = (localMe['image_url'] ?? '').toString();
+      }
+    } catch (_) {}
+    if (callerName == 'User') {
+      try {
+        final userDoc =
+            await FirebaseFirestore.instance.collection('Users').doc(uid).get();
+        final uData = userDoc.data();
+        if (uData != null) {
+          callerName = (uData['username'] ??
+                  uData['name'] ??
+                  FirebaseAuth.instance.currentUser?.displayName ??
+                  'User')
+              .toString();
+          callerAvatar = (uData['imageurl'] ??
+                  uData['userimageurl'] ??
+                  FirebaseAuth.instance.currentUser?.photoURL ??
+                  '')
+              .toString();
+        }
+      } catch (_) {}
+    }
+    if (callerName == 'User' &&
+        FirebaseAuth.instance.currentUser?.displayName != null) {
+      callerName = FirebaseAuth.instance.currentUser!.displayName!;
+    }
+    if (callerAvatar.isEmpty &&
+        FirebaseAuth.instance.currentUser?.photoURL != null) {
+      callerAvatar = FirebaseAuth.instance.currentUser!.photoURL!;
+    }
 
     final call = CallModel(
       callId: callId,
@@ -204,11 +257,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       callerName: callerName,
       callerAvatar: callerAvatar,
       receiverId: widget.participantId,
+      receiverName: widget.participantName,
+      receiverAvatar: widget.participantImageUrl,
       callType: callType,
       status: CallStatus.calling,
     );
 
-    final error = await ref.read(callServiceProvider.notifier).initiateCall(call);
+    final error =
+        await ref.read(callServiceProvider.notifier).initiateCall(call);
     if (error != null) {
       if (mounted) {
         GlassDialog.showInfo(
@@ -238,7 +294,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     LGActionSheet.show(
       context: context,
       title: widget.participantName,
-      message: widget.participantAbout.isNotEmpty ? widget.participantAbout : null,
+      message:
+          widget.participantAbout.isNotEmpty ? widget.participantAbout : null,
       actions: [
         LGActionSheetAction(
           title: 'Contact Info',
@@ -263,11 +320,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             LGActionSheet.showConfirmation(
               context: context,
               title: 'Clear Chat?',
-              message: 'This will delete all messages from this conversation on your device.',
+              message:
+                  'This will delete all messages from this conversation on your device.',
               confirmTitle: 'Clear Messages',
               isDestructive: true,
               onConfirm: () async {
-                await ref.read(chatMessagesProvider(conversationId).notifier).clearConversation();
+                await ref
+                    .read(chatMessagesProvider(conversationId).notifier)
+                    .clearConversation();
                 if (mounted) {
                   showSnackBar(context, "Chat cleared");
                 }
@@ -277,7 +337,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ),
         LGActionSheetAction(
           title: _blocked ? 'Unblock Contact' : 'Block Contact',
-          icon: _blocked ? CupertinoIcons.check_mark_circled : CupertinoIcons.slash_circle,
+          icon: _blocked
+              ? CupertinoIcons.check_mark_circled
+              : CupertinoIcons.slash_circle,
           isDestructive: !_blocked,
           onPressed: _toggleBlockContact,
         ),
@@ -297,7 +359,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         .set({"blocked": newStatus});
     if (mounted) {
       setState(() => _blocked = newStatus);
-      showSnackBar(context, newStatus ? "Blocked ${widget.participantName}" : "Unblocked ${widget.participantName}");
+      showSnackBar(
+          context,
+          newStatus
+              ? "Blocked ${widget.participantName}"
+              : "Unblocked ${widget.participantName}");
     }
   }
 
@@ -305,13 +371,57 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     try {
       final result = await FilePicker.platform.pickFiles(
         allowedExtensions: [
-          'mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma', 'alac',
-          'ape', 'ac3', 'opus', 'aiff', 'mid', 'mka', 'flv', 'amr',
-          'pdf', 'txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-          'odt', 'ods', 'odp', 'rtf', 'epub', 'zip', 'rar', 'tar',
-          '7z', 'gz', 'iso', 'mp4', 'mkv', 'avi', 'mov', 'wmv',
-          'flv', 'webm', 'mpeg', 'mpg', '3gp', 'vob', 'ogv', 'rm',
-          'ram', 'm4v', 'asf',
+          'mp3',
+          'wav',
+          'flac',
+          'aac',
+          'ogg',
+          'm4a',
+          'wma',
+          'alac',
+          'ape',
+          'ac3',
+          'opus',
+          'aiff',
+          'mid',
+          'mka',
+          'flv',
+          'amr',
+          'pdf',
+          'txt',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'ppt',
+          'pptx',
+          'odt',
+          'ods',
+          'odp',
+          'rtf',
+          'epub',
+          'zip',
+          'rar',
+          'tar',
+          '7z',
+          'gz',
+          'iso',
+          'mp4',
+          'mkv',
+          'avi',
+          'mov',
+          'wmv',
+          'flv',
+          'webm',
+          'mpeg',
+          'mpg',
+          '3gp',
+          'vob',
+          'ogv',
+          'rm',
+          'ram',
+          'm4v',
+          'asf',
         ],
         allowMultiple: true,
         allowCompression: true,
@@ -372,10 +482,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     NavigationService.handleBackNavigation(context);
   }
 
-
   Future<void> _handleSend() async {
     final text = _textController.text.trim();
-    if (text.isEmpty) return;
+    final hasAttachments = _pickedImage != null ||
+        _pickedImages.isNotEmpty ||
+        _pickedFiles.isNotEmpty;
+    if (text.isEmpty && !hasAttachments) return;
 
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -422,7 +534,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       return;
     }
 
-    final conversationId = ref.read(chatRepositoryProvider).getConversationId(uid, widget.participantId);
+    final conversationId = ref
+        .read(chatRepositoryProvider)
+        .getConversationId(uid, widget.participantId);
     final replyId = _replyToMessage?.messageId;
     final replyTxt = _replyToMessage?.text;
     final replySender = _replyToMessage?.senderId;
@@ -431,44 +545,159 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       _replyToMessage = null;
     });
 
-    await ref.read(chatMessagesProvider(conversationId).notifier).sendMessage(
-      senderId: uid,
-      receiverId: widget.participantId,
-      text: text,
-      replyToMessageId: replyId,
-      replyToText: replyTxt,
-      replyToSenderId: replySender,
-      participantName: widget.participantName,
-      participantImageUrl: widget.participantImageUrl,
-    );
+    final notifier = ref.read(chatMessagesProvider(conversationId).notifier);
+
+    // Capture attachments and clear UI immediately for optimistic rendering
+    final pickedImg = _pickedImage;
+    final pickedImgs = List<XFile>.from(_pickedImages);
+    final pickedDocs = List<PlatformFile>.from(_pickedFiles);
+    final messageText = text;
+
+    _clearAttachments();
     _textController.clear();
     _scrollToBottom();
+
+    // Send single camera image if selected
+    if (pickedImg != null) {
+      notifier.sendMediaMessage(
+        senderId: uid,
+        receiverId: widget.participantId,
+        file: pickedImg,
+        type: 'image',
+        caption: messageText.isNotEmpty ? messageText : null,
+        replyToMessageId: replyId,
+        replyToText: replyTxt,
+        replyToSenderId: replySender,
+        participantName: widget.participantName,
+        participantImageUrl: widget.participantImageUrl,
+      );
+    }
+
+    // Send multiple gallery images if selected
+    if (pickedImgs.isNotEmpty) {
+      for (final xFile in pickedImgs) {
+        notifier.sendMediaMessage(
+          senderId: uid,
+          receiverId: widget.participantId,
+          file: File(xFile.path),
+          type: 'image',
+          participantName: widget.participantName,
+          participantImageUrl: widget.participantImageUrl,
+        );
+      }
+    }
+
+    // Send picked documents if selected
+    if (pickedDocs.isNotEmpty) {
+      for (final pFile in pickedDocs) {
+        if (pFile.path != null) {
+          notifier.sendMediaMessage(
+            senderId: uid,
+            receiverId: widget.participantId,
+            file: File(pFile.path!),
+            type: 'file',
+            fileName: pFile.name,
+            participantName: widget.participantName,
+            participantImageUrl: widget.participantImageUrl,
+          );
+        }
+      }
+    }
+
+    // If pure text was typed without attachments
+    if (messageText.isNotEmpty && !hasAttachments) {
+      await notifier.sendMessage(
+        senderId: uid,
+        receiverId: widget.participantId,
+        text: messageText,
+        replyToMessageId: replyId,
+        replyToText: replyTxt,
+        replyToSenderId: replySender,
+        participantName: widget.participantName,
+        participantImageUrl: widget.participantImageUrl,
+      );
+    }
   }
 
   String _getFileType(String ext) {
     final lower = ext.toLowerCase();
-    if (['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma',
-      '.alac', '.ape', '.ac3', '.opus', '.aiff', '.mid', '.mka',
-      '.flv', '.amr'].contains(lower)) {
+    if ([
+      '.mp3',
+      '.wav',
+      '.flac',
+      '.aac',
+      '.ogg',
+      '.m4a',
+      '.wma',
+      '.alac',
+      '.ape',
+      '.ac3',
+      '.opus',
+      '.aiff',
+      '.mid',
+      '.mka',
+      '.flv',
+      '.amr'
+    ].contains(lower)) {
       return 'Audio';
     }
-    if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.svg',
-      '.ico', '.webp', '.heif', '.heic', '.raw'].contains(lower)) {
+    if ([
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.bmp',
+      '.tiff',
+      '.svg',
+      '.ico',
+      '.webp',
+      '.heif',
+      '.heic',
+      '.raw'
+    ].contains(lower)) {
       return 'Image';
     }
     if (['.pdf'].contains(lower)) {
       return 'PDF Document';
     }
-    if (['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-      '.odt', '.ods', '.odp', '.rtf', '.epub'].contains(lower)) {
+    if ([
+      '.txt',
+      '.doc',
+      '.docx',
+      '.xls',
+      '.xlsx',
+      '.ppt',
+      '.pptx',
+      '.odt',
+      '.ods',
+      '.odp',
+      '.rtf',
+      '.epub'
+    ].contains(lower)) {
       return 'Document';
     }
-    if (['.zip', '.rar', '.tar', '.7z', '.gz', '.iso', '.tar.gz'].contains(lower)) {
+    if (['.zip', '.rar', '.tar', '.7z', '.gz', '.iso', '.tar.gz']
+        .contains(lower)) {
       return 'Compressed File';
     }
-    if (['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm',
-      '.mpeg', '.mpg', '.3gp', '.vob', '.ogv', '.rm', '.ram',
-      '.m4v', '.asf'].contains(lower)) {
+    if ([
+      '.mp4',
+      '.mkv',
+      '.avi',
+      '.mov',
+      '.wmv',
+      '.flv',
+      '.webm',
+      '.mpeg',
+      '.mpg',
+      '.3gp',
+      '.vob',
+      '.ogv',
+      '.rm',
+      '.ram',
+      '.m4v',
+      '.asf'
+    ].contains(lower)) {
       return 'Video';
     }
     return 'Unknown Type';
@@ -512,337 +741,393 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 child: Icon(
                   CupertinoIcons.back,
                   size: 26,
-                  color: CupertinoTheme.of(context).primaryColor,
+                  color: AppColors.textPrimary(isDark),
                 ),
               ),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _openProfile,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  UserAvatar(
-                    username: widget.participantName,
-                    seed: widget.participantId,
-                    imageUrl: widget.participantImageUrl,
-                    radius: 18,
-                    showOnlineBadge: false,
-                  ),
-                  const SizedBox(width: 8),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: maxTitleWidth),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          widget.participantName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary(isDark),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _openProfile,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    UserAvatar(
+                      username: widget.participantName,
+                      seed: widget.participantId,
+                      imageUrl: widget.participantImageUrl,
+                      radius: 18,
+                      showOnlineBadge: false,
+                    ),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxTitleWidth),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            widget.participantName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary(isDark),
+                            ),
                           ),
-                        ),
-                        StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection("Users")
-                              .doc(widget.participantId)
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            final online = snapshot.data?.get("online") == true;
-                            if (online) {
-                              return const Text(
-                                "Online",
+                          StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection("Users")
+                                .doc(widget.participantId)
+                                .snapshots(),
+                            builder: (context, snapshot) {
+                              final online =
+                                  snapshot.data?.get("online") == true;
+                              if (online) {
+                                return const Text(
+                                  "Online",
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: CupertinoColors.systemGreen,
+                                  ),
+                                );
+                              }
+                              return Text(
+                                "tap here for info",
                                 style: TextStyle(
                                   fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: CupertinoColors.systemGreen,
+                                  color: AppColors.textMuted(isDark),
                                 ),
                               );
-                            }
-                            return Text(
-                              "tap here for info",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textMuted(isDark),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              minimumSize: const Size(32, 32),
-              onPressed: () => _startCall(CallType.video),
-              child: const Icon(CupertinoIcons.video_camera, size: 21, color: AppColors.accentPurple),
-            ),
-            CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              minimumSize: const Size(32, 32),
-              onPressed: () => _startCall(CallType.voice),
-              child: const Icon(CupertinoIcons.phone, size: 19, color: AppColors.accentPurple),
-            ),
-            CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              minimumSize: const Size(32, 32),
-              onPressed: _showMoreOptions,
-              child: Icon(CupertinoIcons.ellipsis_vertical, size: 18, color: AppColors.textPrimary(isDark)),
-            ),
-          ],
-        ),
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.divider(isDark),
-            width: 0.5,
-          ),
-        ),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isDark
-                ? const [
-                    Color(0xFF0F141C),
-                    Color(0xFF0A0D12),
-                  ]
-                : const [
-                    Color(0xFFF4F2ED),
-                    Color(0xFFE8E4DD),
                   ],
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Column(
-            children: [
-              Expanded(
-                child: messagesAsync.when(
-                  loading: () => const Center(child: CupertinoActivityIndicator()),
-                  error: (e, st) => Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(CupertinoIcons.exclamationmark_triangle,
-                            size: 48, color: CupertinoColors.systemRed),
-                        SizedBox(height: AppSpacing.sm),
-                        const Text("Failed to load messages",
-                            style: TextStyle(color: CupertinoColors.systemRed)),
-                        SizedBox(height: AppSpacing.xs),
-                        Text(e.toString(), style: const TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  data: (messages) {
-                    if (messages.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(CupertinoIcons.chat_bubble_2,
-                                size: 54, color: AppColors.textMuted(isDark)),
-                            SizedBox(height: AppSpacing.sm),
-                            Text("No messages yet",
-                                style: TextStyle(color: AppColors.textSecondary(isDark))),
-                            SizedBox(height: AppSpacing.xs),
-                            Text("Send a message to start the conversation",
-                                style: TextStyle(color: AppColors.textMuted(isDark), fontSize: 13)),
-                          ],
-                        ),
-                      );
-                    }
-
-                    return ListView.builder(
-                      controller: _scrollController,
-                      reverse: true,
-                      padding: EdgeInsets.only(
-                        top: AppSpacing.sm,
-                        bottom: AppSpacing.sm,
-                        left: AppSpacing.sm,
-                        right: AppSpacing.sm,
-                      ),
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final chronologicalIndex = messages.length - 1 - index;
-                        final msg = messages[chronologicalIndex];
-                        final isMe = msg.senderId == currentUserId;
-
-                        DateTime? msgDate;
-                        try {
-                          msgDate = DateTime.parse(msg.clientCreatedAt).toLocal();
-                        } catch (_) {}
-
-                        bool isFirstMessageOfDay = false;
-                        if (msgDate != null) {
-                          if (chronologicalIndex == 0) {
-                            isFirstMessageOfDay = true;
-                          } else {
-                            try {
-                              final prevDate = DateTime.parse(messages[chronologicalIndex - 1].clientCreatedAt).toLocal();
-                              if (!_isSameCalendarDay(msgDate, prevDate)) {
-                                isFirstMessageOfDay = true;
-                              }
-                            } catch (_) {
-                              isFirstMessageOfDay = true;
-                            }
-                          }
-                        }
-
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isFirstMessageOfDay && msgDate != null)
-                              _DatePill(date: msgDate, isDark: isDark),
-                            MessageBubble(
-                              key: ValueKey(msg.messageId),
-                              message: msg,
-                              isMe: isMe,
-                              animateEntrance: true,
-                              onReply: () {
-                                setState(() => _replyToMessage = msg);
-                              },
-                              onForward: () {},
-                              onEdit: isMe ? (newText) {
-                                ref.read(chatMessagesProvider(conversationId).notifier)
-                                    .editMessage(msg.messageId, newText, widget.participantId);
-                              } : null,
-                              onToggleReaction: (emoji) {
-                                ref.read(chatMessagesProvider(conversationId).notifier)
-                                    .toggleReaction(msg.messageId, emoji, widget.participantId, currentUserId);
-                              },
-                              onDeleteForMe: () {
-                                ref.read(chatMessagesProvider(conversationId).notifier)
-                                    .deleteForMe(msg.messageId);
-                              },
-                              onDeleteForEveryone: isMe ? () {
-                                ref.read(chatMessagesProvider(conversationId).notifier)
-                                    .deleteForEveryone(msg.messageId, widget.participantId);
-                              } : null,
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
                 ),
-              ),
-
-              // Floating Reply Preview Banner
-              if (_replyToMessage != null)
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xE61E1E22) : const Color(0xF0F5F5F7),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: isDark
-                          ? CupertinoColors.white.withValues(alpha: 0.12)
-                          : CupertinoColors.black.withValues(alpha: 0.08),
-                      width: 0.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: CupertinoColors.black.withValues(alpha: isDark ? 0.25 : 0.06),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 3.5,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: AppColors.accentPurple,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _replyToMessage!.senderId == currentUserId
-                                  ? 'Replying to yourself'
-                                  : 'Replying to ${widget.participantName}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.accentPurple,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _replyToMessage!.text,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary(isDark),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(28, 28),
-                        onPressed: () => setState(() => _replyToMessage = null),
-                        child: Icon(
-                          CupertinoIcons.clear_circled_solid,
-                          size: 20,
-                          color: AppColors.textMuted(isDark),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              // Attachments preview
-              if (_pickedFiles.isNotEmpty ||
-                  _pickedImage != null ||
-                  _pickedImages.isNotEmpty)
-                _AttachmentsPreview(
-                  pickedFiles: _pickedFiles,
-                  pickedImage: _pickedImage,
-                  pickedImages: _pickedImages,
-                  onClear: _clearAttachments,
-                  getFileType: _getFileType,
-                  isDark: isDark,
-                ),
-
-              // Input bar
-              MessageInput(
-                controller: _textController,
-                onChanged: (_) {},
-                onSend: _handleSend,
-                onAttach: _loading ? null : _showAttachSheet,
               ),
             ],
           ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                minimumSize: const Size(32, 32),
+                onPressed: () => _startCall(CallType.video),
+                child: Icon(CupertinoIcons.video_camera,
+                    size: 21, color: AppColors.textPrimary(isDark)),
+              ),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                minimumSize: const Size(32, 32),
+                onPressed: () => _startCall(CallType.voice),
+                child: Icon(CupertinoIcons.phone,
+                    size: 19, color: AppColors.textPrimary(isDark)),
+              ),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                minimumSize: const Size(32, 32),
+                onPressed: _showMoreOptions,
+                child: Icon(CupertinoIcons.ellipsis_vertical,
+                    size: 18, color: AppColors.textPrimary(isDark)),
+              ),
+            ],
+          ),
+          border: Border(
+            bottom: BorderSide(
+              color: AppColors.divider(isDark),
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: Container(
+          color: AppColors.background(isDark),
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                Expanded(
+                  child: messagesAsync.when(
+                    loading: () =>
+                        const Center(child: CupertinoActivityIndicator()),
+                    error: (e, st) => Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(CupertinoIcons.exclamationmark_triangle,
+                              size: 48, color: CupertinoColors.systemRed),
+                          SizedBox(height: AppSpacing.sm),
+                          const Text("Failed to load messages",
+                              style:
+                                  TextStyle(color: CupertinoColors.systemRed)),
+                          SizedBox(height: AppSpacing.xs),
+                          Text(e.toString(),
+                              style: const TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    data: (messages) {
+                      if (messages.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(CupertinoIcons.chat_bubble_2,
+                                  size: 54, color: AppColors.textMuted(isDark)),
+                              SizedBox(height: AppSpacing.sm),
+                              Text("No messages yet",
+                                  style: TextStyle(
+                                      color: AppColors.textSecondary(isDark))),
+                              SizedBox(height: AppSpacing.xs),
+                              Text("Send a message to start the conversation",
+                                  style: TextStyle(
+                                      color: AppColors.textMuted(isDark),
+                                      fontSize: 13)),
+                            ],
+                          ),
+                        );
+                      }
+
+                      // Precompute O(1) key-to-reverse-index map to eliminate O(N^2) searches on scroll
+                      final idToReverseIndex = <String, int>{
+                        for (int i = 0; i < messages.length; i++)
+                          messages[i].messageId: messages.length - 1 - i,
+                      };
+
+                      return ListView.builder(
+                        controller: _scrollController,
+                        reverse: true,
+                        physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics()),
+                        findChildIndexCallback: (Key key) {
+                          if (key is ValueKey<String>) {
+                            return idToReverseIndex[key.value];
+                          }
+                          return null;
+                        },
+                        padding: EdgeInsets.only(
+                          top: AppSpacing.sm,
+                          bottom: AppSpacing.sm,
+                          left: AppSpacing.sm,
+                          right: AppSpacing.sm,
+                        ),
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final chronologicalIndex =
+                              messages.length - 1 - index;
+                          final msg = messages[chronologicalIndex];
+                          final isMe = msg.senderId == currentUserId;
+
+                          DateTime? msgDate;
+                          bool isFirstMessageOfDay = false;
+                          if (chronologicalIndex == 0) {
+                            isFirstMessageOfDay = true;
+                            try {
+                              msgDate = DateTime.parse(msg.clientCreatedAt).toLocal();
+                            } catch (_) {}
+                          } else {
+                            final prev = messages[chronologicalIndex - 1];
+                            final rawCurrent = msg.clientCreatedAt;
+                            final rawPrev = prev.clientCreatedAt;
+                            if (rawCurrent.length >= 10 &&
+                                rawPrev.length >= 10 &&
+                                rawCurrent.substring(0, 10) == rawPrev.substring(0, 10)) {
+                              isFirstMessageOfDay = false;
+                            } else {
+                              try {
+                                msgDate = DateTime.parse(rawCurrent).toLocal();
+                                final prevDate = DateTime.parse(rawPrev).toLocal();
+                                isFirstMessageOfDay = !_isSameCalendarDay(msgDate, prevDate);
+                              } catch (_) {
+                                isFirstMessageOfDay = true;
+                              }
+                            }
+                          }
+                          if (isFirstMessageOfDay && msgDate == null) {
+                            try {
+                              msgDate = DateTime.parse(msg.clientCreatedAt).toLocal();
+                            } catch (_) {}
+                          }
+
+                          return RepaintBoundary(
+                            key: ValueKey(msg.messageId),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isFirstMessageOfDay && msgDate != null)
+                                  _DatePill(date: msgDate, isDark: isDark),
+                                MessageBubble(
+                                  message: msg,
+                                  isMe: isMe,
+                                  animateEntrance: index == 0,
+                                onReply: () {
+                                  setState(() => _replyToMessage = msg);
+                                },
+                                onForward: () {},
+                                onEdit: isMe
+                                    ? (newText) {
+                                        ref
+                                            .read(chatMessagesProvider(
+                                                    conversationId)
+                                                .notifier)
+                                            .editMessage(msg.messageId, newText,
+                                                widget.participantId);
+                                      }
+                                    : null,
+                                onToggleReaction: (emoji) {
+                                  ref
+                                      .read(chatMessagesProvider(conversationId)
+                                          .notifier)
+                                      .toggleReaction(msg.messageId, emoji,
+                                          widget.participantId, currentUserId);
+                                },
+                                onDeleteForMe: () {
+                                  ref
+                                      .read(chatMessagesProvider(conversationId)
+                                          .notifier)
+                                      .deleteForMe(msg.messageId);
+                                },
+                                onDeleteForEveryone: isMe
+                                    ? () {
+                                        ref
+                                            .read(chatMessagesProvider(
+                                                    conversationId)
+                                                .notifier)
+                                            .deleteForEveryone(msg.messageId,
+                                                widget.participantId);
+                                      }
+                                    : null,
+                                onMediaDownloaded: (downloadedPath) {
+                                  ref
+                                      .read(chatMessagesProvider(conversationId)
+                                          .notifier)
+                                      .updateMessageLocalPath(
+                                          msg.messageId, downloadedPath);
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      );
+                    },
+                  ),
+                ),
+
+                // Floating Reply Preview Banner
+                if (_replyToMessage != null)
+                  Container(
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xE61E1E22)
+                          : const Color(0xF0F5F5F7),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isDark
+                            ? CupertinoColors.white.withValues(alpha: 0.12)
+                            : CupertinoColors.black.withValues(alpha: 0.08),
+                        width: 0.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: CupertinoColors.black
+                              .withValues(alpha: isDark ? 0.25 : 0.06),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 3.5,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: AppColors.accent(isDark),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _replyToMessage!.senderId == currentUserId
+                                    ? 'Replying to yourself'
+                                    : 'Replying to ${widget.participantName}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary(isDark),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _replyToMessage!.text,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary(isDark),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(28, 28),
+                          onPressed: () =>
+                              setState(() => _replyToMessage = null),
+                          child: Icon(
+                            CupertinoIcons.clear_circled_solid,
+                            size: 20,
+                            color: AppColors.textMuted(isDark),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Attachments preview
+                if (_pickedFiles.isNotEmpty ||
+                    _pickedImage != null ||
+                    _pickedImages.isNotEmpty)
+                  _AttachmentsPreview(
+                    pickedFiles: _pickedFiles,
+                    pickedImage: _pickedImage,
+                    pickedImages: _pickedImages,
+                    onClear: _clearAttachments,
+                    getFileType: _getFileType,
+                    isDark: isDark,
+                  ),
+
+                // Input bar
+                MessageInput(
+                  controller: _textController,
+                  onChanged: (_) {},
+                  onSend: _handleSend,
+                  onAttach: _loading ? null : _showAttachSheet,
+                  hasAttachments: _pickedImage != null ||
+                      _pickedImages.isNotEmpty ||
+                      _pickedFiles.isNotEmpty,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
   }
 
   void _showAttachSheet() {
@@ -910,7 +1195,8 @@ class _DatePill extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+              color:
+                  CupertinoColors.black.withValues(alpha: isDark ? 0.2 : 0.05),
               blurRadius: 6,
               offset: const Offset(0, 1),
             ),
@@ -970,28 +1256,31 @@ class _AttachmentsPreview extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
             children: [
-              if (pickedImage != null) _PreviewItem(
-                fileType: "Image",
-                fileName: pickedImage!.path.split('/').last,
-                thumbnail: Image.file(pickedImage!, width: 60, height: 60, fit: BoxFit.cover),
-                isDark: isDark,
-              ),
-              ...pickedImages.map((x) => _PreviewItem(
-                fileType: "Image",
-                fileName: x.name,
-                thumbnail: Image.file(File(x.path), width: 60, height: 60, fit: BoxFit.cover),
-                isDark: isDark,
-              )),
-              ...pickedFiles.map((f) => _PreviewItem(
-                fileType: getFileType(f.extension ?? ''),
-                fileName: f.name,
-                thumbnail: Icon(
-                  _iconForType(getFileType(f.extension ?? '')),
-                  size: 36,
-                  color: CupertinoTheme.of(context).primaryColor,
+              if (pickedImage != null)
+                _PreviewItem(
+                  fileType: "Image",
+                  fileName: pickedImage!.path.split('/').last,
+                  thumbnail: Image.file(pickedImage!,
+                      width: 60, height: 60, fit: BoxFit.cover),
+                  isDark: isDark,
                 ),
-                isDark: isDark,
-              )),
+              ...pickedImages.map((x) => _PreviewItem(
+                    fileType: "Image",
+                    fileName: x.name,
+                    thumbnail: Image.file(File(x.path),
+                        width: 60, height: 60, fit: BoxFit.cover),
+                    isDark: isDark,
+                  )),
+              ...pickedFiles.map((f) => _PreviewItem(
+                    fileType: getFileType(f.extension ?? ''),
+                    fileName: f.name,
+                    thumbnail: Icon(
+                      _iconForType(getFileType(f.extension ?? '')),
+                      size: 36,
+                      color: CupertinoTheme.of(context).primaryColor,
+                    ),
+                    isDark: isDark,
+                  )),
             ],
           ),
           Positioned(
@@ -1010,13 +1299,20 @@ class _AttachmentsPreview extends StatelessWidget {
 
   IconData _iconForType(String type) {
     switch (type) {
-      case 'Audio': return CupertinoIcons.music_note;
-      case 'Image': return CupertinoIcons.photo;
-      case 'Video': return CupertinoIcons.film;
-      case 'PDF Document': return CupertinoIcons.doc_text;
-      case 'Document': return CupertinoIcons.doc;
-      case 'Compressed File': return CupertinoIcons.folder;
-      default: return CupertinoIcons.doc;
+      case 'Audio':
+        return CupertinoIcons.music_note;
+      case 'Image':
+        return CupertinoIcons.photo;
+      case 'Video':
+        return CupertinoIcons.film;
+      case 'PDF Document':
+        return CupertinoIcons.doc_text;
+      case 'Document':
+        return CupertinoIcons.doc;
+      case 'Compressed File':
+        return CupertinoIcons.folder;
+      default:
+        return CupertinoIcons.doc;
     }
   }
 }
@@ -1050,7 +1346,8 @@ class _PreviewItem extends StatelessWidget {
           ClipRRect(
             borderRadius:
                 BorderRadius.vertical(top: Radius.circular(AppSpacing.md)),
-            child: SizedBox(width: 80, height: 60, child: Center(child: thumbnail)),
+            child: SizedBox(
+                width: 80, height: 60, child: Center(child: thumbnail)),
           ),
           Padding(
             padding: EdgeInsets.all(AppSpacing.xs),
@@ -1058,7 +1355,8 @@ class _PreviewItem extends StatelessWidget {
               fileName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary(isDark)),
+              style: TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary(isDark)),
               textAlign: TextAlign.center,
             ),
           ),

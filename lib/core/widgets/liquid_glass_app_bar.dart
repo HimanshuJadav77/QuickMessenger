@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Theme, Colors;
+import 'package:flutter/material.dart' show Colors;
 import '../theme/app_colors.dart';
 
 typedef LGAppBar = LiquidGlassAppBar;
@@ -37,9 +37,8 @@ class LiquidGlassAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     final ModalRoute<dynamic>? parentRoute = ModalRoute.of(context);
     final bool canPop = parentRoute?.canPop ?? false;
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark ||
-        Theme.of(context).brightness == Brightness.dark;
-    final accent = accentColor ?? AppColors.accentPurple;
+    final isDark = AppColors.isDarkMode(context);
+    final accent = accentColor ?? AppColors.textPrimary(isDark);
 
     Widget? effectiveLeading = leading;
     if (effectiveLeading == null && automaticallyImplyLeading && canPop) {
@@ -101,9 +100,7 @@ class LiquidGlassAppBar extends StatelessWidget implements PreferredSizeWidget {
           child: Container(
             padding: EdgeInsets.only(top: statusBarHeight),
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xCC121214)
-                  : const Color(0xCCFBFBFE),
+              color: isDark ? const Color(0xCC121214) : const Color(0xCCFBFBFE),
               border: Border(
                 bottom: BorderSide(
                   color: isDark
@@ -135,9 +132,15 @@ class LiquidGlassAppBar extends StatelessWidget implements PreferredSizeWidget {
                           ),
                         ),
                         if (actions != null)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: actions!,
+                          IconTheme(
+                            data: IconThemeData(
+                              color: AppColors.textPrimary(isDark),
+                              size: 22,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: actions!,
+                            ),
                           )
                         else
                           const SizedBox(width: 44),
@@ -161,6 +164,3 @@ class LiquidGlassAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => Size.fromHeight(height + bottomHeight);
 }
-
-
-

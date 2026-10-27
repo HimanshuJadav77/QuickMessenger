@@ -18,13 +18,20 @@ class ChatRepository {
   final SocketService _socketService;
   final Uuid _uuid = const Uuid();
 
-  final StreamController<MessageModel> _messageReceivedController = StreamController<MessageModel>.broadcast();
-  final StreamController<Map<String, dynamic>> _messageStatusController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _messageDeletedController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _messageEditedController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _messageReactionController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<void> _conversationUpdateController = StreamController<void>.broadcast();
-  final StreamController<void> _groupUpdateController = StreamController<void>.broadcast();
+  final StreamController<MessageModel> _messageReceivedController =
+      StreamController<MessageModel>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageStatusController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageDeletedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageEditedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageReactionController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<void> _conversationUpdateController =
+      StreamController<void>.broadcast();
+  final StreamController<void> _groupUpdateController =
+      StreamController<void>.broadcast();
 
   ChatRepository({
     String? currentUserId,
@@ -42,25 +49,41 @@ class ChatRepository {
     }
   }
 
-  Stream<MessageModel> get onMessageReceivedStream => _messageReceivedController.stream;
-  Stream<Map<String, dynamic>> get onMessageStatusStream => _messageStatusController.stream;
-  Stream<Map<String, dynamic>> get onMessageDeletedStream => _messageDeletedController.stream;
-  Stream<Map<String, dynamic>> get onMessageEditedStream => _messageEditedController.stream;
-  Stream<Map<String, dynamic>> get onMessageReactionStream => _messageReactionController.stream;
-  Stream<void> get onConversationUpdateStream => _conversationUpdateController.stream;
+  Stream<MessageModel> get onMessageReceivedStream =>
+      _messageReceivedController.stream;
+  Stream<Map<String, dynamic>> get onMessageStatusStream =>
+      _messageStatusController.stream;
+  Stream<Map<String, dynamic>> get onMessageDeletedStream =>
+      _messageDeletedController.stream;
+  Stream<Map<String, dynamic>> get onMessageEditedStream =>
+      _messageEditedController.stream;
+  Stream<Map<String, dynamic>> get onMessageReactionStream =>
+      _messageReactionController.stream;
+  Stream<void> get onConversationUpdateStream =>
+      _conversationUpdateController.stream;
   Stream<void> get onGroupUpdateStream => _groupUpdateController.stream;
 
-  final StreamController<MessageModel> _groupMessageReceivedController = StreamController<MessageModel>.broadcast();
-  final StreamController<Map<String, dynamic>> _groupMessageStatusController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _groupMessageDeletedController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _groupMessageEditedController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _groupMessageReactionController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<MessageModel> _groupMessageReceivedController =
+      StreamController<MessageModel>.broadcast();
+  final StreamController<Map<String, dynamic>> _groupMessageStatusController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _groupMessageDeletedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _groupMessageEditedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _groupMessageReactionController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
-  Stream<MessageModel> get onGroupMessageReceivedStream => _groupMessageReceivedController.stream;
-  Stream<Map<String, dynamic>> get onGroupMessageStatusStream => _groupMessageStatusController.stream;
-  Stream<Map<String, dynamic>> get onGroupMessageDeletedStream => _groupMessageDeletedController.stream;
-  Stream<Map<String, dynamic>> get onGroupMessageEditedStream => _groupMessageEditedController.stream;
-  Stream<Map<String, dynamic>> get onGroupMessageReactionStream => _groupMessageReactionController.stream;
+  Stream<MessageModel> get onGroupMessageReceivedStream =>
+      _groupMessageReceivedController.stream;
+  Stream<Map<String, dynamic>> get onGroupMessageStatusStream =>
+      _groupMessageStatusController.stream;
+  Stream<Map<String, dynamic>> get onGroupMessageDeletedStream =>
+      _groupMessageDeletedController.stream;
+  Stream<Map<String, dynamic>> get onGroupMessageEditedStream =>
+      _groupMessageEditedController.stream;
+  Stream<Map<String, dynamic>> get onGroupMessageReactionStream =>
+      _groupMessageReactionController.stream;
 
   StreamSubscription? _connectionStateSub;
   StreamSubscription? _groupCreatedSub;
@@ -100,12 +123,26 @@ class ChatRepository {
     return 'conv_${ids[0]}_${ids[1]}';
   }
 
+  String? getParticipantIdFromConversationId(String conversationId) {
+    final cleanId = conversationId.startsWith('conv_')
+        ? conversationId.substring(5)
+        : conversationId;
+    final parts = cleanId.split('_');
+    if (parts.length != 2) return null;
+    final currentUid = currentUserId;
+    if (currentUid.isEmpty) return null;
+    return parts[0] == currentUid ? parts[1] : parts[0];
+  }
 
   void _initSocketListeners() {
     _socketService.onMessageReceived = (data) async {
       final message = MessageModel.fromMap(data);
 
-      final isCurrentChatActive = _socketService.activeConversationId == message.conversationId;
+      final activeConv = _socketService.activeConversationId;
+      final isCurrentChatActive = activeConv != null &&
+          (activeConv == message.conversationId ||
+              activeConv.replaceFirst('conv_', '') ==
+                  message.conversationId.replaceFirst('conv_', ''));
       final effectiveStatus = isCurrentChatActive ? 'read' : 'delivered';
       final messageToStore = message.copyWith(status: effectiveStatus);
 
@@ -113,17 +150,23 @@ class ChatRepository {
 
       // Resolve participant display name and avatar
       String? resolvedName = data['senderName'] ?? data['participantName'];
-      String? resolvedImage = data['senderAvatarUrl'] ?? data['participantImageUrl'];
+      String? resolvedImage =
+          data['senderAvatarUrl'] ?? data['participantImageUrl'];
 
-      if (resolvedName == null || resolvedName.isEmpty || resolvedName == 'User') {
+      if (resolvedName == null ||
+          resolvedName.isEmpty ||
+          resolvedName == 'User') {
         // 1. Check local cached user profile
-        final localProfile = await _dbHelper.getUserProfile(currentUserId, message.senderId);
-        if (localProfile != null && localProfile['username']?.isNotEmpty == true) {
+        final localProfile =
+            await _dbHelper.getUserProfile(currentUserId, message.senderId);
+        if (localProfile != null &&
+            localProfile['username']?.isNotEmpty == true) {
           resolvedName = localProfile['username'];
           resolvedImage ??= localProfile['image_url'];
         } else {
           // 2. Check existing conversation record
-          final existingConv = await _dbHelper.getConversation(currentUserId, message.conversationId);
+          final existingConv = await _dbHelper.getConversation(
+              currentUserId, message.conversationId);
           if (existingConv != null &&
               existingConv['participant_name'] != null &&
               existingConv['participant_name'] != 'User' &&
@@ -139,9 +182,13 @@ class ChatRepository {
                   .get();
               if (snap.exists) {
                 final uData = snap.data() ?? {};
-                resolvedName = (uData['username'] ?? uData['name'] ?? 'User').toString();
-                resolvedImage = (uData['userimageurl'] ?? uData['imageurl'] ?? '').toString();
-                await _dbHelper.upsertUserProfile(currentUserId, message.senderId, {
+                resolvedName =
+                    (uData['username'] ?? uData['name'] ?? 'User').toString();
+                resolvedImage =
+                    (uData['userimageurl'] ?? uData['imageurl'] ?? '')
+                        .toString();
+                await _dbHelper
+                    .upsertUserProfile(currentUserId, message.senderId, {
                   'username': resolvedName,
                   'display_name': resolvedName,
                   'image_url': resolvedImage,
@@ -179,10 +226,10 @@ class ChatRepository {
         _socketService.emitMarkRead(
           conversationId: message.conversationId,
           senderId: message.senderId,
+          messageIds: [message.messageId],
         );
       }
     };
-
 
     _socketService.onMessageSent = (data) async {
       final messageId = data['messageId'];
@@ -201,7 +248,8 @@ class ChatRepository {
       final messageId = data['messageId'];
       final conversationId = data['conversationId'];
       if (messageId != null) {
-        await _dbHelper.updateMessageStatus(currentUserId, messageId, 'delivered');
+        await _dbHelper.updateMessageStatus(
+            currentUserId, messageId, 'delivered');
         _messageStatusController.add({
           'messageId': messageId,
           'conversationId': conversationId,
@@ -212,12 +260,31 @@ class ChatRepository {
 
     _socketService.onReadReceipt = (data) async {
       final conversationId = data['conversationId'];
-      if (conversationId != null) {
-        await _dbHelper.updateAllMessagesStatusForConversation(currentUserId, conversationId, 'read');
-        _messageStatusController.add({
-          'conversationId': conversationId,
-          'status': 'read',
-        });
+      final messageId = data['messageId'];
+      final rawIds = data['messageIds'];
+      final List<String> messageIds = (rawIds is List)
+          ? rawIds
+              .map((e) => e.toString())
+              .where((id) => id.isNotEmpty)
+              .toList()
+          : (messageId != null && messageId.toString().isNotEmpty
+              ? [messageId.toString()]
+              : []);
+
+      if (conversationId != null && messageIds.isNotEmpty) {
+        await _dbHelper.updateSentMessagesStatusForConversation(
+          currentUserId,
+          conversationId,
+          'read',
+          messageIds: messageIds,
+        );
+        for (final id in messageIds) {
+          _messageStatusController.add({
+            'messageId': id,
+            'conversationId': conversationId,
+            'status': 'read',
+          });
+        }
         _conversationUpdateController.add(null);
       }
     };
@@ -229,7 +296,8 @@ class ChatRepository {
 
       if (messageId != null) {
         if (deleteType == 'for_everyone') {
-          await _dbHelper.markMessageDeletedForEveryone(currentUserId, messageId);
+          await _dbHelper.markMessageDeletedForEveryone(
+              currentUserId, messageId);
         } else {
           await _dbHelper.markMessageDeletedForMe(currentUserId, messageId);
         }
@@ -266,7 +334,8 @@ class ChatRepository {
 
       if (messageId != null && reactions != null) {
         final reactionsJson = jsonEncode(reactions);
-        await _dbHelper.updateMessageReactions(currentUserId, messageId, reactionsJson);
+        await _dbHelper.updateMessageReactions(
+            currentUserId, messageId, reactionsJson);
         _messageReactionController.add({
           'messageId': messageId,
           'conversationId': conversationId,
@@ -277,13 +346,19 @@ class ChatRepository {
 
     _socketService.onSyncComplete = (data) async {
       final List? messages = data['messages'];
-      if (messages != null) {
+      if (messages != null && messages.isNotEmpty) {
+        final List<MessageModel> parsed = [];
         for (var raw in messages) {
           if (raw is Map) {
             final msg = MessageModel.fromMap(Map<String, dynamic>.from(raw));
-            await _dbHelper.insertMessage(currentUserId, msg.toMap());
-            _messageReceivedController.add(msg);
+            parsed.add(msg);
           }
+        }
+        // Deterministically sort and deduplicate in ascending chronological order
+        final sorted = MessageModel.sortAndDeduplicate(parsed);
+        for (final msg in sorted) {
+          await _dbHelper.insertMessage(currentUserId, msg.toMap());
+          _messageReceivedController.add(msg);
         }
         _conversationUpdateController.add(null);
       }
@@ -302,9 +377,11 @@ class ChatRepository {
       }
     };
 
-    _connectionStateSub = _socketService.connectionStateStream.listen((isConnected) {
+    _connectionStateSub =
+        _socketService.connectionStateStream.listen((isConnected) {
       if (isConnected) {
         retryPendingMessages();
+        _socketService.emitSyncUnseen();
         if (_socketService.activeConversationId != null) {
           syncMessages(_socketService.activeConversationId!);
         }
@@ -326,13 +403,13 @@ class ChatRepository {
       }
     });
 
-    _groupMessageReceivedSub = _socketService.onGroupMessageReceivedStream.listen((data) async {
+    _groupMessageReceivedSub =
+        _socketService.onGroupMessageReceivedStream.listen((data) async {
       final groupId = data['groupId'] ?? data['group_id'];
       if (groupId != null && currentUserId.isNotEmpty) {
         await _dbHelper.insertGroupMessage(currentUserId, data);
         try {
-          final msg = MessageModel.fromMap(
-              Map<String, dynamic>.from(data));
+          final msg = MessageModel.fromMap(Map<String, dynamic>.from(data));
           _groupMessageReceivedController.add(msg);
         } catch (_) {}
         _groupUpdateController.add(null);
@@ -350,6 +427,11 @@ class ChatRepository {
     String? participantName,
     String? participantImageUrl,
     String type = 'text',
+    String? fileUrl,
+    String? localPath,
+    String? driveFileId,
+    String? fileName,
+    int? fileSize,
   }) async {
     final messageId = _uuid.v4();
     final conversationId = getConversationId(senderId, receiverId);
@@ -367,6 +449,11 @@ class ChatRepository {
       replyToSenderId: replyToSenderId,
       status: 'pending',
       clientCreatedAt: clientCreatedAt,
+      fileUrl: fileUrl,
+      localPath: localPath,
+      driveFileId: driveFileId,
+      fileName: fileName,
+      fileSize: fileSize,
     );
 
     final effectiveUserId = currentUserId.isNotEmpty ? currentUserId : senderId;
@@ -379,7 +466,9 @@ class ChatRepository {
       participantId: receiverId,
       participantName: participantName,
       participantImageUrl: participantImageUrl,
-      lastMessage: text,
+      lastMessage: type == 'image'
+          ? '📷 Photo'
+          : (type == 'file' ? '📎 $fileName' : text),
       lastTimestamp: clientCreatedAt,
       unreadCount: 0,
     );
@@ -396,6 +485,10 @@ class ChatRepository {
       replyToText: replyToText,
       replyToSenderId: replyToSenderId,
       clientCreatedAt: clientCreatedAt,
+      fileUrl: fileUrl,
+      driveFileId: driveFileId,
+      fileName: fileName,
+      fileSize: fileSize,
     );
 
     // 2. Cloud Firestore sync in background (non-blocking)
@@ -423,76 +516,18 @@ class ChatRepository {
     String? participantName,
     String? participantImageUrl,
   }) async {
-    try {
-      final firestore = FirebaseFirestore.instance;
-      await firestore
-          .collection("Users")
-          .doc(senderId)
-          .collection("chats")
-          .doc(receiverId)
-          .set({
-        "chat": true,
-        "time": FieldValue.serverTimestamp(),
-        "lastMessage": text,
-        "lastTimestamp": clientCreatedAt,
-        if (participantName != null && participantName.isNotEmpty)
-          "participantName": participantName,
-        if (participantImageUrl != null && participantImageUrl.isNotEmpty)
-          "participantImageUrl": participantImageUrl,
-      }, SetOptions(merge: true));
-
-      await firestore
-          .collection("Users")
-          .doc(receiverId)
-          .collection("chats")
-          .doc(senderId)
-          .set({
-        "chat": true,
-        "time": FieldValue.serverTimestamp(),
-        "lastMessage": text,
-        "lastTimestamp": clientCreatedAt,
-      }, SetOptions(merge: true));
-
-      await firestore
-          .collection("Users")
-          .doc(senderId)
-          .collection("save_chat")
-          .doc(receiverId)
-          .collection("messages")
-          .doc(messageId)
-          .set({
-        "messageId": messageId,
-        "sender": senderId,
-        "receiver": receiverId,
-        "message": text,
-        "messagestate": "send",
-        "time": FieldValue.serverTimestamp(),
-        "clientCreatedAt": clientCreatedAt,
-        "type": type,
-      });
-
-      await firestore
-          .collection("Users")
-          .doc(receiverId)
-          .collection("save_chat")
-          .doc(senderId)
-          .collection("messages")
-          .doc(messageId)
-          .set({
-        "messageId": messageId,
-        "sender": senderId,
-        "receiver": receiverId,
-        "message": text,
-        "messagestate": "No State",
-        "time": FieldValue.serverTimestamp(),
-        "clientCreatedAt": clientCreatedAt,
-        "type": type,
-      });
-    } catch (_) {}
+    // NOTE: Firestore sync is now handled exclusively by the Socket.IO server.
+    // Flutter only writes to local SQLite. The Node.js server persists to Firestore
+    // and handles offline sync when users come back online.
+    // This ensures:
+    // - Single chat entry per conversation (normalized via getConversationId)
+    // - No duplicate writes from Flutter side
+    // - Server handles offline->online sync immediately
+    // - Consistent data across all devices
   }
 
-
-  Future<void> toggleReaction(String conversationId, String messageId, String emoji, String receiverId) async {
+  Future<void> toggleReaction(String conversationId, String messageId,
+      String emoji, String receiverId) async {
     _socketService.emitToggleReaction(
       conversationId: conversationId,
       messageId: messageId,
@@ -501,7 +536,8 @@ class ChatRepository {
     );
   }
 
-  Future<void> editMessage(String conversationId, String messageId, String newText, String receiverId) async {
+  Future<void> editMessage(String conversationId, String messageId,
+      String newText, String receiverId) async {
     await _dbHelper.updateEditedMessage(currentUserId, messageId, newText);
     _socketService.emitEditMessage(
       conversationId: conversationId,
@@ -517,9 +553,11 @@ class ChatRepository {
     _conversationUpdateController.add(null);
   }
 
-  Future<void> deleteMessageForMe(String conversationId, String messageId) async {
+  Future<void> deleteMessageForMe(
+      String conversationId, String messageId) async {
     await _dbHelper.markMessageDeletedForMe(currentUserId, messageId);
-    _socketService.emitDeleteForMe(conversationId: conversationId, messageId: messageId);
+    _socketService.emitDeleteForMe(
+        conversationId: conversationId, messageId: messageId);
     _messageDeletedController.add({
       'messageId': messageId,
       'conversationId': conversationId,
@@ -528,7 +566,8 @@ class ChatRepository {
     _conversationUpdateController.add(null);
   }
 
-  Future<void> deleteMessageForEveryone(String conversationId, String messageId, String receiverId) async {
+  Future<void> deleteMessageForEveryone(
+      String conversationId, String messageId, String receiverId) async {
     await _dbHelper.markMessageDeletedForEveryone(currentUserId, messageId);
     _socketService.emitDeleteForEveryone(
       conversationId: conversationId,
@@ -543,18 +582,24 @@ class ChatRepository {
     _conversationUpdateController.add(null);
   }
 
-  Future<void> togglePinConversation(String conversationId, bool isPinned) async {
-    await _dbHelper.togglePinConversation(currentUserId, conversationId, isPinned);
+  Future<void> togglePinConversation(
+      String conversationId, bool isPinned) async {
+    await _dbHelper.togglePinConversation(
+        currentUserId, conversationId, isPinned);
     _conversationUpdateController.add(null);
   }
 
-  Future<void> toggleArchiveConversation(String conversationId, bool isArchived) async {
-    await _dbHelper.toggleArchiveConversation(currentUserId, conversationId, isArchived);
+  Future<void> toggleArchiveConversation(
+      String conversationId, bool isArchived) async {
+    await _dbHelper.toggleArchiveConversation(
+        currentUserId, conversationId, isArchived);
     _conversationUpdateController.add(null);
   }
 
-  Future<void> toggleMuteConversation(String conversationId, bool isMuted) async {
-    await _dbHelper.toggleMuteConversation(currentUserId, conversationId, isMuted);
+  Future<void> toggleMuteConversation(
+      String conversationId, bool isMuted) async {
+    await _dbHelper.toggleMuteConversation(
+        currentUserId, conversationId, isMuted);
     _conversationUpdateController.add(null);
   }
 
@@ -564,7 +609,29 @@ class ChatRepository {
   }
 
   Future<void> deleteConversation(String conversationId) async {
-    await _dbHelper.deleteConversation(currentUserId, conversationId);
+    final uid = currentUserId;
+    if (uid.isEmpty) return;
+
+    final participantId = getParticipantIdFromConversationId(conversationId);
+
+    await _dbHelper.deleteConversation(uid, conversationId);
+
+    if (participantId != null && participantId.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('Users')
+            .doc(uid)
+            .collection('chats')
+            .doc(participantId)
+            .delete();
+      } catch (_) {}
+    }
+
+    if (participantId != null && participantId.isNotEmpty) {
+      await _dbHelper.addDeletedConversationTombstone(
+          uid, conversationId, participantId);
+    }
+
     _conversationUpdateController.add(null);
   }
 
@@ -585,7 +652,8 @@ class ChatRepository {
     }
   }
 
-  Future<List<MessageModel>> getMessages(String conversationId, {int limit = 50, int offset = 0}) async {
+  Future<List<MessageModel>> getMessages(String conversationId,
+      {int limit = 50, int offset = 0}) async {
     final rawMessages = await _dbHelper.getMessagesForConversation(
       currentUserId,
       conversationId,
@@ -597,7 +665,9 @@ class ChatRepository {
 
   Future<List<ConversationModel>> getConversations() async {
     final rawConversations = await _dbHelper.getConversations(currentUserId);
-    return rawConversations.map((map) => ConversationModel.fromMap(map)).toList();
+    return rawConversations
+        .map((map) => ConversationModel.fromMap(map))
+        .toList();
   }
 
   Future<void> syncConversationsFromFirestore(QuerySnapshot snapshot) async {
@@ -606,23 +676,43 @@ class ChatRepository {
 
     for (var doc in snapshot.docs) {
       final participantId = doc.id;
-      final data = doc.data() as Map<String, dynamic>? ?? {};
       final conversationId = getConversationId(uid, participantId);
+
+      final isDeleted =
+          await _dbHelper.isConversationDeleted(uid, conversationId);
+      if (isDeleted) {
+        continue;
+      }
+
+      final data = doc.data() as Map<String, dynamic>? ?? {};
       final lastMsg = (data['lastMessage'] ?? '').toString().trim();
       if (lastMsg.isEmpty || lastMsg == 'Tap to chat') {
         continue;
       }
-      final lastTime = (data['lastTimestamp'] ?? DateTime.now().toIso8601String()).toString();
+      final lastTime =
+          (data['lastTimestamp'] ?? DateTime.now().toIso8601String())
+              .toString();
       String participantName = (data['participantName'] ?? '').toString();
-      String participantImageUrl = (data['participantImageUrl'] ?? '').toString();
+      String participantImageUrl =
+          (data['participantImageUrl'] ?? '').toString();
 
       if (participantName.isEmpty || participantName == 'User') {
         try {
-          final userDoc = await FirebaseFirestore.instance.collection("Users").doc(participantId).get();
+          final userDoc = await FirebaseFirestore.instance
+              .collection("Users")
+              .doc(participantId)
+              .get();
           if (userDoc.exists) {
             final uData = userDoc.data() ?? {};
-            participantName = (uData['username'] ?? 'User').toString();
-            participantImageUrl = (uData['userimageurl'] ?? '').toString();
+            participantName =
+                (uData['username'] ?? uData['name'] ?? 'User').toString();
+            participantImageUrl =
+                (uData['imageurl'] ?? uData['userimageurl'] ?? '').toString();
+            await _dbHelper.upsertUserProfile(uid, participantId, {
+              'username': participantName,
+              'display_name': participantName,
+              'image_url': participantImageUrl,
+            });
           }
         } catch (_) {}
       }
@@ -639,26 +729,61 @@ class ChatRepository {
     }
   }
 
-  Future<void> markConversationAsRead(String conversationId, String senderId) async {
-    await _dbHelper.updateAllMessagesStatusForConversation(currentUserId, conversationId, 'read');
-    await _dbHelper.resetUnreadCount(currentUserId, conversationId);
-    _socketService.emitMarkRead(conversationId: conversationId, senderId: senderId);
+  Future<void> markConversationAsRead(
+      String conversationId, String participantId) async {
+    final uid = currentUserId;
+    if (uid.isEmpty) return;
+
+    // 1. Get ALL unread incoming message IDs BEFORE resetting status
+    final unreadMessages =
+        await _dbHelper.getUnreadMessages(uid, conversationId);
+    final unreadMessageIds = unreadMessages
+        .where((m) => (m['sender_id'] ?? '').toString() != uid)
+        .map((m) => (m['message_id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    // 2. Mark incoming messages as read in local SQLite
+    await _dbHelper.updateIncomingMessagesStatusForConversation(
+      uid,
+      conversationId,
+      'read',
+      messageIds: unreadMessageIds.isNotEmpty ? unreadMessageIds : null,
+    );
+
+    // 3. Reset unread count to 0 in SQLite conversation record
+    await _dbHelper.resetUnreadCount(uid, conversationId);
+
+    // 4. Send read receipts over Socket.IO ONLY if there are unread messages to acknowledge
+    if (unreadMessageIds.isNotEmpty) {
+      _socketService.emitMarkRead(
+        conversationId: conversationId,
+        senderId: participantId,
+        messageIds: unreadMessageIds,
+      );
+    }
+
+    // 5. Notify conversation stream so UI unread badges update immediately
     _conversationUpdateController.add(null);
   }
 
   Future<void> syncMessages(String conversationId) async {
     final messages = await getMessages(conversationId, limit: 1);
     final lastMessageId = messages.isNotEmpty ? messages.last.messageId : null;
-    _socketService.emitSyncMessages(conversationId: conversationId, lastMessageId: lastMessageId);
+    _socketService.emitSyncMessages(
+        conversationId: conversationId, lastMessageId: lastMessageId);
   }
 
-Future<void> upsertUserProfile(String currentUserId, String uid, Map<String, dynamic> profileData) async {
+  Future<void> upsertUserProfile(String currentUserId, String uid,
+      Map<String, dynamic> profileData) async {
     await _dbHelper.upsertUserProfile(currentUserId, uid, profileData);
   }
 
   // Group message methods
-  Future<List<MessageModel>> getGroupMessages(String groupId, {int limit = 50, int offset = 0}) async {
-    final rawMessages = await _dbHelper.getGroupMessages(currentUserId, groupId, limit: limit, offset: offset);
+  Future<List<MessageModel>> getGroupMessages(String groupId,
+      {int limit = 50, int offset = 0}) async {
+    final rawMessages = await _dbHelper.getGroupMessages(currentUserId, groupId,
+        limit: limit, offset: offset);
     return rawMessages.map((map) => MessageModel.fromMap(map)).toList();
   }
 
@@ -697,7 +822,8 @@ Future<void> upsertUserProfile(String currentUserId, String uid, Map<String, dyn
     return message;
   }
 
-  Future<void> editGroupMessage(String groupId, String messageId, String newText) async {
+  Future<void> editGroupMessage(
+      String groupId, String messageId, String newText) async {
     await _dbHelper.updateEditedMessage(currentUserId, messageId, newText);
     _socketService.emitEditGroupMessage(
       groupId: groupId,
@@ -712,7 +838,8 @@ Future<void> upsertUserProfile(String currentUserId, String uid, Map<String, dyn
     _groupUpdateController.add(null);
   }
 
-  Future<void> toggleGroupReaction(String groupId, String messageId, String emoji, String currentUserId) async {
+  Future<void> toggleGroupReaction(String groupId, String messageId,
+      String emoji, String currentUserId) async {
     _socketService.emitToggleGroupReaction(
       groupId: groupId,
       messageId: messageId,
@@ -732,7 +859,8 @@ Future<void> upsertUserProfile(String currentUserId, String uid, Map<String, dyn
     _groupUpdateController.add(null);
   }
 
-  Future<void> deleteGroupMessageForEveryone(String groupId, String messageId) async {
+  Future<void> deleteGroupMessageForEveryone(
+      String groupId, String messageId) async {
     await _dbHelper.markMessageDeletedForEveryone(currentUserId, messageId);
     _socketService.emitDeleteGroupForEveryone(
       groupId: groupId,
@@ -783,14 +911,14 @@ Future<void> upsertUserProfile(String currentUserId, String uid, Map<String, dyn
         'joined_at': now,
       },
       ...members.map((m) => {
-        'group_id': groupId,
-        'uid': m['uid'],
-        'username': m['username'] ?? 'User',
-        'display_name': m['displayName'] ?? m['username'] ?? 'User',
-        'image_url': m['imageurl'] ?? m['imageUrl'] ?? '',
-        'role': 'member',
-        'joined_at': now,
-      }),
+            'group_id': groupId,
+            'uid': m['uid'],
+            'username': m['username'] ?? 'User',
+            'display_name': m['displayName'] ?? m['username'] ?? 'User',
+            'image_url': m['imageurl'] ?? m['imageUrl'] ?? '',
+            'role': 'member',
+            'joined_at': now,
+          }),
     ];
     await _dbHelper.insertGroupMembers(groupId, allMembers);
 
@@ -854,7 +982,8 @@ Future<void> upsertUserProfile(String currentUserId, String uid, Map<String, dyn
   Future<void> deleteGroup(String groupId) async {
     if (groupId.isEmpty) return;
     try {
-      final groupDoc = FirebaseFirestore.instance.collection('groups').doc(groupId);
+      final groupDoc =
+          FirebaseFirestore.instance.collection('groups').doc(groupId);
       final membersSnap = await groupDoc.collection('members').get();
       for (final doc in membersSnap.docs) {
         await doc.reference.delete();
@@ -877,7 +1006,8 @@ Future<void> upsertUserProfile(String currentUserId, String uid, Map<String, dyn
   Future<void> leaveGroup(String groupId) async {
     if (groupId.isEmpty || currentUserId.isEmpty) return;
     try {
-      final groupDoc = FirebaseFirestore.instance.collection('groups').doc(groupId);
+      final groupDoc =
+          FirebaseFirestore.instance.collection('groups').doc(groupId);
       await groupDoc.collection('members').doc(currentUserId).delete();
       await groupDoc.update({
         'memberCount': FieldValue.increment(-1),

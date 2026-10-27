@@ -16,84 +16,94 @@ class IncomingCallDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final call = ref.watch(callServiceProvider);
-    final isDark =
-        CupertinoTheme.of(context).brightness == Brightness.dark;
+    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
 
     if (call == null || call.status != CallStatus.ringing) {
       return const SizedBox.shrink();
     }
+
+    // Auto-navigate to call screen when call comes in (for notification taps)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (Navigator.canPop(context) == false) {
+        // App just launched, navigate to call screen
+        NavigationService.navigatorKey.currentState?.push(
+          CupertinoPageRoute(builder: (_) => const CallScreen()),
+        );
+      }
+    });
 
     return Positioned(
       top: 60,
       left: 16,
       right: 16,
       child: LiquidGlassContainer(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    UserAvatar(
-                      imageUrl: call.callerAvatar,
-                      username: call.callerName,
-                      radius: 24,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  UserAvatar(
+                    imageUrl: call.callerAvatar,
+                    username: call.callerName,
+                    radius: 24,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          call.callerName,
+                          style: AppTypography.headingMedium
+                              .copyWith(color: AppColors.textPrimary(isDark)),
+                        ),
+                        Text(
+                          'Incoming ${call.callType.name} call...',
+                          style: AppTypography.bodyMedium
+                              .copyWith(color: AppColors.textSecondary(isDark)),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            call.callerName,
-                            style: AppTypography.headingMedium.copyWith(color: AppColors.textPrimary(isDark)),
-                          ),
-                          Text(
-                            'Incoming ${call.callType.name} call...',
-                            style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary(isDark)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildActionButton(
-                      icon: CupertinoIcons.phone_down_fill,
-                      color: AppColors.error,
-                      label: 'Decline',
-                      onTap: () {
-                        ref
-                            .read(callServiceProvider.notifier)
-                            .rejectCall(call.callId);
-                      },
-                    ),
-                    _buildActionButton(
-                      icon: call.callType == CallType.video
-                          ? CupertinoIcons.video_camera_solid
-                          : CupertinoIcons.phone_fill,
-                      color: AppColors.success,
-                      label: 'Accept',
-                      onTap: () {
-                        ref
-                            .read(callServiceProvider.notifier)
-                            .acceptCall(call.callId);
-                        NavigationService.navigatorKey.currentState?.push(
-                          CupertinoPageRoute(
-                              builder: (_) => const CallScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildActionButton(
+                    icon: CupertinoIcons.phone_down_fill,
+                    color: AppColors.error,
+                    label: 'Decline',
+                    onTap: () {
+                      ref
+                          .read(callServiceProvider.notifier)
+                          .rejectCall(call.callId);
+                    },
+                  ),
+                  _buildActionButton(
+                    icon: call.callType == CallType.video
+                        ? CupertinoIcons.video_camera_solid
+                        : CupertinoIcons.phone_fill,
+                    color: AppColors.success,
+                    label: 'Accept',
+                    onTap: () {
+                      ref
+                          .read(callServiceProvider.notifier)
+                          .acceptCall(call.callId);
+                      NavigationService.navigatorKey.currentState?.push(
+                        CupertinoPageRoute(builder: (_) => const CallScreen()),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
+      ),
     );
   }
 
@@ -119,11 +129,11 @@ class IncomingCallDialog extends ConsumerWidget {
           const SizedBox(height: 8),
           Text(
             label,
-            style: AppTypography.bodyMedium.copyWith(color: color, fontWeight: FontWeight.bold),
+            style: AppTypography.bodyMedium
+                .copyWith(color: color, fontWeight: FontWeight.bold),
           ),
         ],
       ),
     );
   }
 }
-

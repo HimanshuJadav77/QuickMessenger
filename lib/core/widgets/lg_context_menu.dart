@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, Material, CircleAvatar, Divider;
+import 'package:flutter/material.dart'
+    show Colors, Material, CircleAvatar, Divider;
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 
@@ -47,7 +48,8 @@ void showLGContextMenu({
       return const SizedBox.shrink();
     },
     transitionBuilder: (ctx, anim, secondaryAnim, _) {
-      final curvedAnim = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+      final curvedAnim =
+          CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
 
       return BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
@@ -59,11 +61,13 @@ void showLGContextMenu({
             child: Center(
               child: SingleChildScrollView(
                 child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.90, end: 1.0).animate(curvedAnim),
+                  scale:
+                      Tween<double>(begin: 0.90, end: 1.0).animate(curvedAnim),
                   child: FadeTransition(
                     opacity: anim,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 16),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -73,7 +77,9 @@ void showLGContextMenu({
                             height: 220,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(20),
-                              color: isDark ? const Color(0xE6141416) : const Color(0xF2FFFFFF),
+                              color: isDark
+                                  ? const Color(0xE6141416)
+                                  : const Color(0xF2FFFFFF),
                               border: Border.all(
                                 color: isDark
                                     ? Colors.white.withValues(alpha: 0.16)
@@ -82,7 +88,8 @@ void showLGContextMenu({
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.2),
+                                  color: Colors.black
+                                      .withValues(alpha: isDark ? 0.5 : 0.2),
                                   blurRadius: 28,
                                   offset: const Offset(0, 14),
                                 ),
@@ -94,16 +101,20 @@ void showLGContextMenu({
                                 children: [
                                   // Mini Preview Header
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 10),
                                     decoration: BoxDecoration(
                                       color: isDark
                                           ? Colors.white.withValues(alpha: 0.05)
-                                          : Colors.black.withValues(alpha: 0.03),
+                                          : Colors.black
+                                              .withValues(alpha: 0.03),
                                       border: Border(
                                         bottom: BorderSide(
                                           color: isDark
-                                              ? Colors.white.withValues(alpha: 0.10)
-                                              : Colors.black.withValues(alpha: 0.06),
+                                              ? Colors.white
+                                                  .withValues(alpha: 0.10)
+                                              : Colors.black
+                                                  .withValues(alpha: 0.06),
                                           width: 0.5,
                                         ),
                                       ),
@@ -112,11 +123,16 @@ void showLGContextMenu({
                                       children: [
                                         CircleAvatar(
                                           radius: 16,
-                                          backgroundColor: accent.withValues(alpha: 0.2),
-                                          backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+                                          backgroundColor:
+                                              accent.withValues(alpha: 0.2),
+                                          backgroundImage: imageUrl.isNotEmpty
+                                              ? NetworkImage(imageUrl)
+                                              : null,
                                           child: imageUrl.isEmpty
                                               ? Text(
-                                                  title.isNotEmpty ? title[0].toUpperCase() : '?',
+                                                  title.isNotEmpty
+                                                      ? title[0].toUpperCase()
+                                                      : '?',
                                                   style: TextStyle(
                                                     fontSize: 14,
                                                     fontWeight: FontWeight.bold,
@@ -132,7 +148,8 @@ void showLGContextMenu({
                                             style: TextStyle(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 15,
-                                              color: AppColors.textPrimary(isDark),
+                                              color:
+                                                  AppColors.textPrimary(isDark),
                                             ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
@@ -143,7 +160,8 @@ void showLGContextMenu({
                                             timestamp,
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: AppColors.textMuted(isDark),
+                                              color:
+                                                  AppColors.textMuted(isDark),
                                             ),
                                           ),
                                       ],
@@ -153,23 +171,31 @@ void showLGContextMenu({
                                   Expanded(
                                     child: Container(
                                       padding: const EdgeInsets.all(12),
-                                      color: isDark ? const Color(0xFF0C0C0E) : const Color(0xFFEFEFF4),
+                                      color: isDark
+                                          ? const Color(0xFF0C0C0E)
+                                          : const Color(0xFFEFEFF4),
                                       child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 10, vertical: 4),
                                             decoration: BoxDecoration(
                                               color: isDark
-                                                  ? Colors.white.withValues(alpha: 0.08)
-                                                  : Colors.black.withValues(alpha: 0.06),
-                                              borderRadius: BorderRadius.circular(8),
+                                                  ? Colors.white
+                                                      .withValues(alpha: 0.08)
+                                                  : Colors.black
+                                                      .withValues(alpha: 0.06),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             child: Text(
-                                              "🔒 Messages are end-to-end encrypted",
+                                              "🔒 Secure Conversation",
                                               style: TextStyle(
                                                 fontSize: 10,
-                                                color: AppColors.textMuted(isDark),
+                                                color:
+                                                    AppColors.textMuted(isDark),
                                               ),
                                               textAlign: TextAlign.center,
                                             ),
@@ -178,18 +204,26 @@ void showLGContextMenu({
                                           Align(
                                             alignment: Alignment.centerLeft,
                                             child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 8),
                                               decoration: BoxDecoration(
-                                                color: isDark ? const Color(0xFF26262A) : Colors.white,
-                                                borderRadius: BorderRadius.circular(14),
+                                                color: isDark
+                                                    ? const Color(0xFF26262A)
+                                                    : Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
                                               ),
                                               child: Text(
-                                                lastMessage != null && lastMessage.isNotEmpty
+                                                lastMessage != null &&
+                                                        lastMessage.isNotEmpty
                                                     ? lastMessage
                                                     : subtitle,
                                                 style: TextStyle(
                                                   fontSize: 13,
-                                                  color: AppColors.textPrimary(isDark),
+                                                  color: AppColors.textPrimary(
+                                                      isDark),
                                                 ),
                                                 maxLines: 2,
                                                 overflow: TextOverflow.ellipsis,
@@ -202,23 +236,33 @@ void showLGContextMenu({
                                   ),
                                   // Mini Input footer
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    color: isDark ? const Color(0xFF161618) : Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
+                                    color: isDark
+                                        ? const Color(0xFF161618)
+                                        : Colors.white,
                                     child: Row(
                                       children: [
-                                        Icon(CupertinoIcons.add, size: 18, color: AppColors.textMuted(isDark)),
+                                        Icon(CupertinoIcons.add,
+                                            size: 18,
+                                            color: AppColors.textMuted(isDark)),
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Container(
                                             height: 24,
                                             decoration: BoxDecoration(
-                                              color: isDark ? const Color(0xFF26262A) : const Color(0xFFF0F0F2),
-                                              borderRadius: BorderRadius.circular(12),
+                                              color: isDark
+                                                  ? const Color(0xFF26262A)
+                                                  : const Color(0xFFF0F0F2),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                             ),
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        Icon(CupertinoIcons.mic, size: 18, color: AppColors.textMuted(isDark)),
+                                        Icon(CupertinoIcons.mic,
+                                            size: 18,
+                                            color: AppColors.textMuted(isDark)),
                                       ],
                                     ),
                                   ),
@@ -233,7 +277,9 @@ void showLGContextMenu({
                             width: 260,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(18),
-                              color: isDark ? const Color(0xCC242428) : const Color(0xECF8F8FC),
+                              color: isDark
+                                  ? const Color(0xCC242428)
+                                  : const Color(0xECF8F8FC),
                               border: Border.all(
                                 color: isDark
                                     ? Colors.white.withValues(alpha: 0.16)
@@ -242,7 +288,8 @@ void showLGContextMenu({
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
+                                  color: Colors.black
+                                      .withValues(alpha: isDark ? 0.4 : 0.15),
                                   blurRadius: 24,
                                   offset: const Offset(0, 10),
                                 ),
@@ -260,7 +307,8 @@ void showLGContextMenu({
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       CupertinoButton(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 16, vertical: 12),
                                         onPressed: () {
                                           HapticFeedback.selectionClick();
                                           Navigator.pop(ctx);
@@ -273,7 +321,8 @@ void showLGContextMenu({
                                               size: 20,
                                               color: item.isDestructive
                                                   ? CupertinoColors.systemRed
-                                                  : AppColors.textPrimary(isDark),
+                                                  : AppColors.textPrimary(
+                                                      isDark),
                                             ),
                                             const SizedBox(width: 14),
                                             Expanded(
@@ -283,8 +332,10 @@ void showLGContextMenu({
                                                   fontSize: 15,
                                                   fontWeight: FontWeight.w500,
                                                   color: item.isDestructive
-                                                      ? CupertinoColors.systemRed
-                                                      : AppColors.textPrimary(isDark),
+                                                      ? CupertinoColors
+                                                          .systemRed
+                                                      : AppColors.textPrimary(
+                                                          isDark),
                                                 ),
                                               ),
                                             ),
@@ -297,8 +348,10 @@ void showLGContextMenu({
                                           thickness: 0.5,
                                           indent: 48,
                                           color: isDark
-                                              ? Colors.white.withValues(alpha: 0.10)
-                                              : Colors.black.withValues(alpha: 0.08),
+                                              ? Colors.white
+                                                  .withValues(alpha: 0.10)
+                                              : Colors.black
+                                                  .withValues(alpha: 0.08),
                                         ),
                                     ],
                                   );

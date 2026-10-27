@@ -28,7 +28,7 @@ class GlassButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accentColor = ref.watch(themeStateProvider).accentColor;
-    
+
     if (isOutlined) {
       return SizedBox(
         height: height,
@@ -36,7 +36,8 @@ class GlassButton extends ConsumerWidget {
         child: OutlinedButton(
           style: OutlinedButton.styleFrom(
             side: const BorderSide(color: Colors.white, width: 1.6),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
           onPressed: () {
@@ -67,7 +68,8 @@ class GlassButton extends ConsumerWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         onPressed: () {
           HapticFeedback.lightImpact();
@@ -85,9 +87,3 @@ class GlassButton extends ConsumerWidget {
     );
   }
 }
-
-
-
-
-
-

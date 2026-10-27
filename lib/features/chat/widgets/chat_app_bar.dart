@@ -36,9 +36,10 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = AppColors.isDarkMode(context);
     final isConnectedAsync = ref.watch(socketConnectionProvider);
-    final isConnected = isConnectedAsync.value ?? true; // Default to true to prevent flash
+    final isConnected =
+        isConnectedAsync.value ?? true; // Default to true to prevent flash
 
     final String displaySubtitle;
     final Color subtitleColor;
@@ -58,11 +59,13 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
       subtitleWeight = FontWeight.normal;
     }
 
+    final iconColor = AppColors.textPrimary(isDark);
+
     return LiquidGlassAppBar(
-      leading: IconButton(
-        icon: Icon(CupertinoIcons.back, color: Theme.of(context).colorScheme.primary),
-        tooltip: 'Back',
+      leading: CupertinoButton(
+        padding: EdgeInsets.zero,
         onPressed: onBack,
+        child: Icon(CupertinoIcons.back, color: iconColor, size: 24),
       ),
       title: InkWell(
         onTap: onProfileTap,
@@ -82,7 +85,10 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                 children: [
                   Text(
                     username,
-                    style: AppTypography.bodyLarge.copyWith(fontWeight: FontWeight.bold),
+                    style: AppTypography.bodyLarge.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary(isDark),
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -102,19 +108,17 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         ),
       ),
       actions: [
-        IconButton(
-          icon: Icon(CupertinoIcons.video_camera, color: Theme.of(context).colorScheme.primary),
-          tooltip: 'Video Call',
+        CupertinoButton(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           onPressed: onVideoCall,
+          child: Icon(CupertinoIcons.video_camera, color: iconColor, size: 26),
         ),
-        IconButton(
-          icon: Icon(CupertinoIcons.phone, color: Theme.of(context).colorScheme.primary),
-          tooltip: 'Voice Call',
+        CupertinoButton(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           onPressed: onVoiceCall,
+          child: Icon(CupertinoIcons.phone, color: iconColor, size: 24),
         ),
       ],
     );
   }
 }
-
-

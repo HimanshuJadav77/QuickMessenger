@@ -1,16 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 /// Centralized color tokens for the entire QuickMessenger application.
 /// All screens MUST use these tokens instead of raw Colors.* values.
 class AppColors {
   AppColors._();
 
-  // ── Brand: Single Signature Accent iOS Sapphire Blue ─────────────
-  static const Color accentBlue = Color(0xFF007AFF); // Signature iOS Sapphire Blue
-  static const Color accentPurple = accentBlue; // Alias for seamless compatibility
-  static const Color primary = accentBlue;
-  static const Color primaryDark = Color(0xFF0056B3);
-  static const Color primaryLight = Color(0xFF4DA3FF);
+  // ── Theme State Helper ───────────────────────────────────────────
+  /// Returns whether dark mode is currently active for the given [context].
+  /// Checks both CupertinoTheme and Material Theme to guarantee accurate resolution
+  /// regardless of widget hierarchy.
+  static bool isDarkMode(BuildContext context) {
+    final cupertinoBrightness = CupertinoTheme.of(context).brightness;
+    if (cupertinoBrightness != null) {
+      return cupertinoBrightness == Brightness.dark;
+    }
+    return Theme.of(context).brightness == Brightness.dark;
+  }
+
+  // ── Brand: Monochrome Black & White Palette ─────────────────────
+  static const Color accentWhite = Color(0xFFFFFFFF);
+  static const Color accentBlack = Color(0xFF000000);
+  static const Color accentBlue =
+      accentWhite; // Replaced blue with monochrome white
+  static const Color accentPurple = accentWhite; // Monochrome compatibility
+  static const Color primary = accentWhite;
+  static const Color primaryDark = Color(0xFF1C1C1E);
+  static const Color primaryLight = Color(0xFFF2F2F7);
   static const Color error = Color(0xFFEF4444);
   static const Color success = Color(0xFF22C55E);
   static const Color warning = Color(0xFFF59E0B);
@@ -20,7 +36,7 @@ class AppColors {
   static const Color offlineIndicator = Color(0xFF94A3B8);
 
   // ── Message bubbles ──────────────────────────────────────────────
-  static const Color senderBubble = accentPurple;
+  static const Color senderBubble = Color(0xFF2C2C2E);
   static const Color senderText = Color(0xFFFFFFFF);
 
   // ── Light theme tokens ───────────────────────────────────────────
@@ -49,11 +65,12 @@ class AppColors {
 
   // ── Adaptive helpers (pass isDark from Theme.of(context).brightness) ──
 
+  static Color accent(bool isDark) => isDark ? Colors.white : Colors.black;
+
   static Color background(bool isDark) =>
       isDark ? darkBackground : lightBackground;
 
-  static Color surface(bool isDark) =>
-      isDark ? darkSurface : lightSurface;
+  static Color surface(bool isDark) => isDark ? darkSurface : lightSurface;
 
   static Color surfaceVariant(bool isDark) =>
       isDark ? darkSurfaceVariant : lightSurfaceVariant;
@@ -73,31 +90,54 @@ class AppColors {
   static Color receiverText(bool isDark) =>
       isDark ? darkReceiverText : lightReceiverText;
 
-  static Color border(bool isDark) =>
-      isDark ? darkBorder : lightBorder;
+  static Color border(bool isDark) => isDark ? darkBorder : lightBorder;
 
-  static Color divider(bool isDark) =>
-      isDark ? darkDivider : lightDivider;
+  static Color divider(bool isDark) => isDark ? darkDivider : lightDivider;
 
   // ── Glassmorphism tokens ─────────────────────────────────────────
-  static Color glassBorder(bool isDark) =>
-      isDark ? Colors.white.withValues(alpha: 0.14) : Colors.black.withValues(alpha: 0.08);
+  static Color glassBorder(bool isDark) => isDark
+      ? Colors.white.withValues(alpha: 0.14)
+      : Colors.black.withValues(alpha: 0.08);
 
-  static Color glassFill(bool isDark) =>
-      isDark ? Colors.black.withValues(alpha: 0.70) : Colors.white.withValues(alpha: 0.80);
+  static Color glassFill(bool isDark) => isDark
+      ? Colors.black.withValues(alpha: 0.70)
+      : Colors.white.withValues(alpha: 0.80);
 
-  static Color glassFillSubtle(bool isDark) =>
-      isDark ? Colors.white.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.25);
+  static Color glassFillSubtle(bool isDark) => isDark
+      ? Colors.white.withValues(alpha: 0.08)
+      : Colors.white.withValues(alpha: 0.25);
 
-  static Color glassHighlight(bool isDark) =>
-      isDark ? Colors.white.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.40);
+  static Color glassHighlight(bool isDark) => isDark
+      ? Colors.white.withValues(alpha: 0.18)
+      : Colors.white.withValues(alpha: 0.40);
 
   // ── Semantic Color Aliases (for consistent theming) ──────────────
   /// Primary action color - derives from user's accent selection
   static Color primaryAction(Color accent) => accent;
 
+  /// Adaptive text/icon color on primary action surfaces (e.g. filled buttons)
+  static Color onPrimary(bool isDark, [Color? accent]) {
+    final target = accent ?? AppColors.accent(isDark);
+    return target.computeLuminance() > 0.65
+        ? const Color(0xFF000000)
+        : const Color(0xFFFFFFFF);
+  }
+
   /// Text/icon on primary action surfaces
   static const Color onPrimaryAction = Colors.white;
+
+  /// Adaptive message bubble background for sender
+  static Color bubbleMe(bool isDark) => textPrimary(isDark);
+
+  /// Adaptive text/icon color inside sender message bubble
+  static Color bubbleMeText(bool isDark) => background(isDark);
+
+  /// Adaptive message bubble background for receiver
+  static Color bubbleOther(bool isDark) =>
+      isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7);
+
+  /// Adaptive text/icon color inside receiver message bubble
+  static Color bubbleOtherText(bool isDark) => textPrimary(isDark);
 
   /// Secondary action color - subtle variant of accent
   static Color secondaryAction(Color accent, bool isDark) =>
@@ -116,8 +156,7 @@ class AppColors {
       isDark ? darkSurface : lightSurface;
 
   /// Outline color for borders, dividers
-  static Color outline(bool isDark) =>
-      isDark ? darkBorder : lightBorder;
+  static Color outline(bool isDark) => isDark ? darkBorder : lightBorder;
 
   /// Outline variant for subtle borders
   static Color outlineVariant(bool isDark) =>
@@ -144,18 +183,16 @@ class AppColors {
   static Color focus(Color accent) => accent;
 
   /// Disabled state color
-  static Color disabled(bool isDark) =>
-      isDark ? darkTextMuted : lightTextMuted;
+  static Color disabled(bool isDark) => isDark ? darkTextMuted : lightTextMuted;
 
   // ── Branded gradient ─────────────────────────────────────────────
   static const LinearGradient meshGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF1E3A8A),
-      Color(0xFF3B82F6),
-      Color(0xFF0F172A),
+      Color(0xFF2C2C2E),
+      Color(0xFF1C1C1E),
+      Color(0xFF000000),
     ],
   );
 }
-

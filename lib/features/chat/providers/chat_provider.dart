@@ -1,9 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/database/local_database_helper.dart';
 import '../../../core/providers/auth_providers.dart';
+import '../../../core/services/drive_service.dart';
+import '../../../core/services/socket_service.dart';
 import '../repositories/chat_repository.dart';
 import '../models/message_model.dart';
 import '../models/conversation_model.dart';
@@ -16,13 +24,19 @@ final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   return repo;
 });
 
-final userProfileProvider = FutureProvider.autoDispose.family<Map<String, String>, String>((ref, uid) async {
-  if (uid.isEmpty) return {'username': 'User', 'imageurl': '', 'about': '', 'email': ''};
+final userProfileProvider = FutureProvider.autoDispose
+    .family<Map<String, String>, String>((ref, uid) async {
+  if (uid.isEmpty) {
+    return {'username': 'User', 'imageurl': '', 'about': '', 'email': ''};
+  }
 
   final repo = ref.watch(chatRepositoryProvider);
   final conversations = await repo.getConversations();
   final matching = conversations.where(
-    (c) => c.participantId == uid && c.participantName != 'User' && c.participantName.isNotEmpty,
+    (c) =>
+        c.participantId == uid &&
+        c.participantName != 'User' &&
+        c.participantName.isNotEmpty,
   );
   if (matching.isNotEmpty) {
     final conv = matching.first;
@@ -60,14 +74,16 @@ final userProfileProvider = FutureProvider.autoDispose.family<Map<String, String
 
   // Fallback to Firebase
   try {
-    final doc = await FirebaseFirestore.instance.collection("Users").doc(uid).get();
+    final doc =
+        await FirebaseFirestore.instance.collection("Users").doc(uid).get();
     if (doc.exists) {
       final data = doc.data()!;
       final resolvedName = (data['username'] ?? '').toString();
       if (resolvedName.isNotEmpty && resolvedName != 'User') {
         final profile = {
           'username': resolvedName,
-          'imageurl': (data['userimageurl'] ?? data['imageurl'] ?? '').toString(),
+          'imageurl':
+              (data['userimageurl'] ?? data['imageurl'] ?? '').toString(),
           'about': (data['about'] ?? '').toString(),
           'email': (data['email'] ?? '').toString(),
         };
@@ -87,39 +103,43 @@ final userProfileProvider = FutureProvider.autoDispose.family<Map<String, String
   return {'username': 'User', 'imageurl': '', 'about': '', 'email': ''};
 });
 
-class ConversationsNotifier extends StateNotifier<AsyncValue<List<ConversationModel>>> {
+class ConversationsNotifier
+    extends StateNotifier<AsyncValue<List<ConversationModel>>> {
   final ChatRepository _repository;
   StreamSubscription? _sub;
-  StreamSubscription? _firestoreSub;
 
   ConversationsNotifier(this._repository) : super(const AsyncValue.loading()) {
     loadConversations();
     _sub = _repository.onConversationUpdateStream.listen((_) {
       loadConversations();
     });
-    _initFirestoreListener();
+    _performInitialSyncIfNeeded();
   }
 
-  void _initFirestoreListener() {
+  Future<void> _performInitialSyncIfNeeded() async {
     final uid = _repository.currentUserId;
-    if (uid.isNotEmpty) {
-      _firestoreSub = FirebaseFirestore.instance
-          .collection("Users")
-          .doc(uid)
-          .collection("chats")
-          .snapshots()
-          .listen((snap) async {
-        await _repository.syncConversationsFromFirestore(snap);
-        await loadConversations();
-      });
-    }
+    if (uid.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasSynced = prefs.getBool('initial_firestore_sync_$uid') ?? false;
+      if (!hasSynced) {
+        // Single one-time initial fetch from Firestore for bootstrap
+        final snap = await FirebaseFirestore.instance
+            .collection("Users")
+            .doc(uid)
+            .collection("chats")
+            .get();
+        if (snap.docs.isNotEmpty) {
+          await _repository.syncConversationsFromFirestore(snap);
+          await loadConversations();
+        }
+        await prefs.setBool('initial_firestore_sync_$uid', true);
+      }
+    } catch (_) {}
   }
 
   Future<void> loadConversations() async {
     try {
-      if (_firestoreSub == null && _repository.currentUserId.isNotEmpty) {
-        _initFirestoreListener();
-      }
       final conversations = await _repository.getConversations();
       state = AsyncValue.data(conversations);
     } catch (e, st) {
@@ -155,13 +175,12 @@ class ConversationsNotifier extends StateNotifier<AsyncValue<List<ConversationMo
   @override
   void dispose() {
     _sub?.cancel();
-    _firestoreSub?.cancel();
     super.dispose();
   }
 }
 
-final conversationsProvider =
-    StateNotifierProvider<ConversationsNotifier, AsyncValue<List<ConversationModel>>>((ref) {
+final conversationsProvider = StateNotifierProvider<ConversationsNotifier,
+    AsyncValue<List<ConversationModel>>>((ref) {
   final repo = ref.watch(chatRepositoryProvider);
   return ConversationsNotifier(repo);
 });
@@ -258,12 +277,14 @@ final groupsProvider =
 
 bool _convMatches(String? id1, String? id2) {
   if (id1 == null || id2 == null) return false;
-  final clean1 = id1.replaceFirst('conv_', '');
-  final clean2 = id2.replaceFirst('conv_', '');
+  // Normalize both IDs by stripping common prefixes
+  final clean1 = id1.replaceFirst('conv_', '').replaceFirst('group_', '');
+  final clean2 = id2.replaceFirst('conv_', '').replaceFirst('group_', '');
   return clean1 == clean2;
 }
 
-class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>> {
+class ChatMessagesNotifier
+    extends StateNotifier<AsyncValue<List<MessageModel>>> {
   final ChatRepository _repository;
   final String conversationId;
   StreamSubscription? _msgSub;
@@ -271,6 +292,9 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
   StreamSubscription? _deleteSub;
   StreamSubscription? _editSub;
   StreamSubscription? _reactionSub;
+  int _loadOffset = 0;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
 
   ChatMessagesNotifier(this._repository, this.conversationId)
       : super(const AsyncValue.loading()) {
@@ -278,14 +302,54 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
     _listenToEvents();
   }
 
+  bool get hasMore => _hasMore;
+  bool get isLoadingMore => _isLoadingMore;
+
+  Future<void> loadMessages({bool reset = true}) async {
+    if (reset) {
+      _loadOffset = 0;
+      _hasMore = true;
+      state = const AsyncValue.loading();
+    }
+    if (_isLoadingMore) return;
+    if (!_hasMore && !reset) return;
+
+    _isLoadingMore = true;
+    try {
+      final messages = await _repository.getMessages(
+        conversationId,
+        limit: AppConfig.messagesPageSize,
+        offset: _loadOffset,
+      );
+      if (reset) {
+        _hasMore = messages.length >= AppConfig.messagesPageSize;
+        _loadOffset = messages.length;
+        state = AsyncValue.data(MessageModel.sortAndDeduplicate(messages));
+      } else {
+        _hasMore = messages.length >= AppConfig.messagesPageSize;
+        _loadOffset += messages.length;
+        state.whenData((list) {
+          state = AsyncValue.data(
+              MessageModel.sortAndDeduplicate([...messages, ...list]));
+        });
+      }
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    } finally {
+      _isLoadingMore = false;
+    }
+  }
+
+  Future<void> loadMore() async {
+    await loadMessages(reset: false);
+  }
+
   void _listenToEvents() {
     _msgSub = _repository.onMessageReceivedStream.listen((msg) {
       if (_convMatches(msg.conversationId, conversationId)) {
         state.whenData((list) {
-          final exists = list.any((m) => m.messageId == msg.messageId);
-          if (!exists) {
-            state = AsyncValue.data([...list, msg]);
-          }
+          state = AsyncValue.data(
+              MessageModel.sortAndDeduplicate([...list, msg]));
         });
       }
     });
@@ -300,11 +364,16 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
           final updated = list.map((m) {
             if (targetMsgId != null && m.messageId == targetMsgId) {
               if (m.status == 'read' || m.status == 'seen') return m;
-              if ((m.status == 'delivered' || m.status == 'sent') && (newStatus == 'sent' || newStatus == 'pending')) return m;
+              if ((m.status == 'delivered' || m.status == 'sent') &&
+                  (newStatus == 'sent' || newStatus == 'pending')) {
+                return m;
+              }
               return m.copyWith(status: newStatus);
-            } else if (targetMsgId == null && (newStatus == 'read' || newStatus == 'seen')) {
-              if (m.senderId == _repository.currentUserId && (m.status == 'sent' || m.status == 'delivered')) {
-                return m.copyWith(status: 'seen');
+            } else if (targetMsgId == null &&
+                (newStatus == 'read' || newStatus == 'seen')) {
+              if (m.senderId == _repository.currentUserId &&
+                  (m.status == 'sent' || m.status == 'delivered')) {
+                return m.copyWith(status: 'read');
               }
               return m;
             }
@@ -323,7 +392,8 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
       if (_convMatches(targetConvId, conversationId) && targetMsgId != null) {
         state.whenData((list) {
           if (deleteType == 'for_me') {
-            final filtered = list.where((m) => m.messageId != targetMsgId).toList();
+            final filtered =
+                list.where((m) => m.messageId != targetMsgId).toList();
             state = AsyncValue.data(filtered);
           } else if (deleteType == 'for_everyone') {
             final updated = list.map((m) {
@@ -364,8 +434,11 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
       final targetMsgId = data['messageId'];
       final rawReactions = data['reactions'];
 
-      if (_convMatches(targetConvId, conversationId) && targetMsgId != null && rawReactions is Map) {
-        final Map<String, String> reactionsMap = rawReactions.map((k, v) => MapEntry(k.toString(), v.toString()));
+      if (_convMatches(targetConvId, conversationId) &&
+          targetMsgId != null &&
+          rawReactions is Map) {
+        final Map<String, String> reactionsMap =
+            rawReactions.map((k, v) => MapEntry(k.toString(), v.toString()));
         state.whenData((list) {
           final updated = list.map((m) {
             if (m.messageId == targetMsgId) {
@@ -379,136 +452,6 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
     });
   }
 
-  Future<void> loadMessages() async {
-    try {
-      final uid = _repository.currentUserId;
-      var messages = await _repository.getMessages(conversationId);
-      if (messages.isEmpty) {
-        if (uid.isNotEmpty) {
-          final cleanParts = conversationId.replaceFirst('conv_', '').split('_');
-          final participantId = cleanParts.firstWhere((id) => id != uid, orElse: () => '');
-          if (participantId.isNotEmpty) {
-            try {
-              final snap = await FirebaseFirestore.instance
-                  .collection("Users")
-                  .doc(uid)
-                  .collection("save_chat")
-                  .doc(participantId)
-                  .collection("messages")
-                  .orderBy("time", descending: false)
-                  .get();
-              for (var doc in snap.docs) {
-                final data = doc.data();
-                final stateStr = (data['messagestate'] ?? data['status'] ?? '').toString().toLowerCase();
-                final String msgStatus;
-                if (stateStr == 'seen' || stateStr == 'read') {
-                  msgStatus = 'seen';
-                } else if (stateStr == 'delivered') {
-                  msgStatus = 'delivered';
-                } else if (stateStr == 'send' || stateStr == 'sent') {
-                  msgStatus = 'sent';
-                } else {
-                  msgStatus = 'pending';
-                }
-                final msg = MessageModel(
-                  messageId: doc.id,
-                  conversationId: conversationId,
-                  senderId: (data['sender'] ?? data['senderId'] ?? '').toString(),
-                  receiverId: (data['receiver'] ?? data['receiverId'] ?? '').toString(),
-                  type: (data['type'] ?? 'text').toString(),
-                  text: (data['message'] ?? data['text'] ?? '').toString(),
-                  status: msgStatus,
-                  clientCreatedAt: (data['clientCreatedAt'] ?? DateTime.now().toIso8601String()).toString(),
-                );
-                await LocalDatabaseHelper.instance.insertMessage(uid, msg.toMap());
-              }
-              if (snap.docs.isEmpty) {
-                final canonicalSnap = await FirebaseFirestore.instance
-                    .collection("conversations")
-                    .doc(conversationId)
-                    .collection("messages")
-                    .orderBy("clientCreatedAt", descending: false)
-                    .limit(50)
-                    .get();
-                for (var doc in canonicalSnap.docs) {
-                  final data = doc.data();
-                  final stateStr = (data['status'] ?? '').toString().toLowerCase();
-                  final String msgStatus;
-                  if (stateStr == 'seen' || stateStr == 'read') {
-                    msgStatus = 'seen';
-                  } else if (stateStr == 'delivered') {
-                    msgStatus = 'delivered';
-                  } else if (stateStr == 'send' || stateStr == 'sent') {
-                    msgStatus = 'sent';
-                  } else {
-                    msgStatus = 'pending';
-                  }
-                  final msg = MessageModel(
-                    messageId: doc.id,
-                    conversationId: conversationId,
-                    senderId: (data['senderId'] ?? '').toString(),
-                    receiverId: (data['receiverId'] ?? '').toString(),
-                    type: (data['type'] ?? 'text').toString(),
-                    text: (data['text'] ?? '').toString(),
-                    status: msgStatus,
-                    clientCreatedAt: (data['clientCreatedAt'] ?? DateTime.now().toIso8601String()).toString(),
-                  );
-                  await LocalDatabaseHelper.instance.insertMessage(uid, msg.toMap());
-                }
-              }
-              messages = await _repository.getMessages(conversationId);
-            } catch (_) {}
-          }
-        }
-      } else if (uid.isNotEmpty) {
-        try {
-          final lastTimestamp = messages.last.clientCreatedAt;
-          final newSnap = await FirebaseFirestore.instance
-              .collection("conversations")
-              .doc(conversationId)
-              .collection("messages")
-              .where("clientCreatedAt", isGreaterThan: lastTimestamp)
-              .orderBy("clientCreatedAt", descending: false)
-              .limit(50)
-              .get();
-
-          if (newSnap.docs.isNotEmpty) {
-            for (var doc in newSnap.docs) {
-              final data = doc.data();
-              final stateStr = (data['status'] ?? '').toString().toLowerCase();
-              final String msgStatus;
-              if (stateStr == 'seen' || stateStr == 'read') {
-                msgStatus = 'seen';
-              } else if (stateStr == 'delivered') {
-                msgStatus = 'delivered';
-              } else if (stateStr == 'send' || stateStr == 'sent') {
-                msgStatus = 'sent';
-              } else {
-                msgStatus = 'pending';
-              }
-              final msg = MessageModel(
-                messageId: doc.id,
-                conversationId: conversationId,
-                senderId: (data['senderId'] ?? '').toString(),
-                receiverId: (data['receiverId'] ?? '').toString(),
-                type: (data['type'] ?? 'text').toString(),
-                text: (data['text'] ?? '').toString(),
-                status: msgStatus,
-                clientCreatedAt: (data['clientCreatedAt'] ?? DateTime.now().toIso8601String()).toString(),
-              );
-              await LocalDatabaseHelper.instance.insertMessage(uid, msg.toMap());
-            }
-            messages = await _repository.getMessages(conversationId);
-          }
-        } catch (_) {}
-      }
-      state = AsyncValue.data(messages);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-    }
-  }
-
-
   Future<void> sendMessage({
     required String senderId,
     required String receiverId,
@@ -518,6 +461,12 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
     String? replyToSenderId,
     String? participantName,
     String? participantImageUrl,
+    String type = 'text',
+    String? fileUrl,
+    String? localPath,
+    String? driveFileId,
+    String? fileName,
+    int? fileSize,
   }) async {
     final message = await _repository.sendMessage(
       senderId: senderId,
@@ -528,20 +477,260 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
       replyToSenderId: replyToSenderId,
       participantName: participantName,
       participantImageUrl: participantImageUrl,
+      type: type,
+      fileUrl: fileUrl,
+      localPath: localPath,
+      driveFileId: driveFileId,
+      fileName: fileName,
+      fileSize: fileSize,
     );
 
     state.whenData((list) {
-      final exists = list.any((m) => m.messageId == message.messageId);
-      if (!exists) {
-        state = AsyncValue.data([...list, message]);
-      }
+      state = AsyncValue.data(
+          MessageModel.sortAndDeduplicate([...list, message]));
     });
 
     _repository.notifyConversationUpdate();
   }
 
-  Future<void> editMessage(String messageId, String newText, String receiverId) async {
-    await _repository.editMessage(conversationId, messageId, newText, receiverId);
+  Future<void> sendMediaMessage({
+    required String senderId,
+    required String receiverId,
+    required File file,
+    required String type,
+    String? fileName,
+    String? caption,
+    String? replyToMessageId,
+    String? replyToText,
+    String? replyToSenderId,
+    String? participantName,
+    String? participantImageUrl,
+  }) async {
+    final sep = Platform.isWindows ? '\\' : '/';
+    final resolvedFileName = fileName ?? file.path.split(sep).last;
+    final fileSize = file.existsSync() ? file.lengthSync() : 0;
+    final messageId = const Uuid().v4();
+    final clientCreatedAt = DateTime.now().toIso8601String();
+    final displayText =
+        (caption != null && caption.isNotEmpty) ? caption : resolvedFileName;
+
+    // 1. Optimistic Message Model with status = 'uploading'
+    final optimisticMessage = MessageModel(
+      messageId: messageId,
+      conversationId: conversationId,
+      senderId: senderId,
+      receiverId: receiverId,
+      type: type,
+      text: displayText,
+      replyToMessageId: replyToMessageId,
+      replyToText: replyToText,
+      replyToSenderId: replyToSenderId,
+      status: 'uploading',
+      clientCreatedAt: clientCreatedAt,
+      localPath: file.path,
+      fileName: resolvedFileName,
+      fileSize: fileSize,
+    );
+
+    // 2. Persist to local database immediately
+    final effectiveUserId = _repository.currentUserId.isNotEmpty
+        ? _repository.currentUserId
+        : senderId;
+    await LocalDatabaseHelper.instance
+        .insertMessage(effectiveUserId, optimisticMessage.toMap());
+
+    await LocalDatabaseHelper.instance.upsertConversation(
+      currentUserId: effectiveUserId,
+      conversationId: conversationId,
+      participantId: receiverId,
+      participantName: participantName,
+      participantImageUrl: participantImageUrl,
+      lastMessage: type == 'image' ? '📷 Photo' : '📎 $resolvedFileName',
+      lastTimestamp: clientCreatedAt,
+      unreadCount: 0,
+    );
+
+    // 3. Immediately update UI state so media bubble appears with uploading state
+    state.whenData((list) {
+      state = AsyncValue.data(
+          MessageModel.sortAndDeduplicate([...list, optimisticMessage]));
+    });
+    _repository.notifyConversationUpdate();
+
+    // 4. Background upload to Google Drive
+    try {
+      final ext = file.path.split('.').last.toLowerCase();
+      String mimeType;
+      switch (ext) {
+        case 'jpg':
+        case 'jpeg':
+          mimeType = 'image/jpeg';
+          break;
+        case 'png':
+          mimeType = 'image/png';
+          break;
+        case 'gif':
+          mimeType = 'image/gif';
+          break;
+        case 'webp':
+          mimeType = 'image/webp';
+          break;
+        case 'pdf':
+          mimeType = 'application/pdf';
+          break;
+        case 'mp4':
+          mimeType = 'video/mp4';
+          break;
+        case 'mp3':
+          mimeType = 'audio/mpeg';
+          break;
+        case 'zip':
+          mimeType = 'application/zip';
+          break;
+        default:
+          mimeType = 'application/octet-stream';
+      }
+
+      Map<String, dynamic>? upload;
+      try {
+        upload = await DriveService.instance.uploadMediaFile(
+          file: file,
+          fileName: resolvedFileName,
+          mimeType: mimeType,
+        );
+      } catch (e) {
+        debugPrint("[ChatProvider] Drive upload exception: $e");
+      }
+
+      // Seamless fallback to Firebase Storage if Drive upload fails or returns null
+      if (upload == null || upload['fileUrl'] == null) {
+        try {
+          debugPrint(
+              "[ChatProvider] Drive upload unavailable. Uploading to Firebase Storage...");
+          final storageRef = FirebaseStorage.instance
+              .ref()
+              .child('chat_media')
+              .child(conversationId)
+              .child(
+                  '${DateTime.now().millisecondsSinceEpoch}_$resolvedFileName');
+
+          final task = await storageRef.putFile(
+            file,
+            SettableMetadata(contentType: mimeType),
+          );
+          final downloadUrl = await task.ref.getDownloadURL();
+          upload = {
+            'fileUrl': downloadUrl,
+            'fileName': resolvedFileName,
+            'fileSize': file.existsSync() ? file.lengthSync() : fileSize,
+            'driveFileId': null,
+          };
+          debugPrint(
+              "[ChatProvider] Firebase Storage upload succeeded: $downloadUrl");
+        } catch (storageErr) {
+          debugPrint(
+              "[ChatProvider] Firebase Storage upload failed: $storageErr");
+        }
+      }
+
+      if (upload != null && upload['fileUrl'] != null) {
+        final fileUrl = upload['fileUrl'] as String;
+        final driveFileId = upload['driveFileId'] as String?;
+        final uploadedSize = upload['fileSize'] as int? ?? fileSize;
+
+        // Update local database
+        await LocalDatabaseHelper.instance.updateMessageMedia(
+          effectiveUserId,
+          messageId,
+          fileUrl: fileUrl,
+          driveFileId: driveFileId,
+          fileName: resolvedFileName,
+          fileSize: uploadedSize,
+          status: 'sent',
+        );
+
+        // Emit over socket to recipient
+        SocketService.instance.emitSendMessage(
+          messageId: messageId,
+          receiverId: receiverId,
+          type: type,
+          text: displayText,
+          replyToMessageId: replyToMessageId,
+          replyToText: replyToText,
+          replyToSenderId: replyToSenderId,
+          clientCreatedAt: clientCreatedAt,
+          fileUrl: fileUrl,
+          driveFileId: driveFileId,
+          fileName: resolvedFileName,
+          fileSize: uploadedSize,
+        );
+
+        // Update in-memory state
+        state.whenData((list) {
+          final updated = list.map((m) {
+            if (m.messageId == messageId) {
+              return m.copyWith(
+                fileUrl: fileUrl,
+                driveFileId: driveFileId,
+                fileSize: uploadedSize,
+                status: 'sent',
+              );
+            }
+            return m;
+          }).toList();
+          state = AsyncValue.data(updated);
+        });
+      } else {
+        // Upload failed
+        await LocalDatabaseHelper.instance
+            .updateMessageStatus(effectiveUserId, messageId, 'failed');
+        state.whenData((list) {
+          final updated = list.map((m) {
+            if (m.messageId == messageId) {
+              return m.copyWith(status: 'failed');
+            }
+            return m;
+          }).toList();
+          state = AsyncValue.data(updated);
+        });
+      }
+    } catch (_) {
+      await LocalDatabaseHelper.instance
+          .updateMessageStatus(effectiveUserId, messageId, 'failed');
+      state.whenData((list) {
+        final updated = list.map((m) {
+          if (m.messageId == messageId) {
+            return m.copyWith(status: 'failed');
+          }
+          return m;
+        }).toList();
+        state = AsyncValue.data(updated);
+      });
+    }
+  }
+
+  Future<void> updateMessageLocalPath(
+      String messageId, String localPath) async {
+    final uid = _repository.currentUserId;
+    if (uid.isNotEmpty) {
+      await LocalDatabaseHelper.instance
+          .updateMessageLocalPath(uid, messageId, localPath);
+      state.whenData((list) {
+        final updated = list.map((m) {
+          if (m.messageId == messageId) {
+            return m.copyWith(localPath: localPath);
+          }
+          return m;
+        }).toList();
+        state = AsyncValue.data(updated);
+      });
+    }
+  }
+
+  Future<void> editMessage(
+      String messageId, String newText, String receiverId) async {
+    await _repository.editMessage(
+        conversationId, messageId, newText, receiverId);
     state.whenData((list) {
       final updated = list.map((m) {
         if (m.messageId == messageId) {
@@ -553,8 +742,10 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
     });
   }
 
-  Future<void> toggleReaction(String messageId, String emoji, String receiverId, String currentUserId) async {
-    await _repository.toggleReaction(conversationId, messageId, emoji, receiverId);
+  Future<void> toggleReaction(String messageId, String emoji, String receiverId,
+      String currentUserId) async {
+    await _repository.toggleReaction(
+        conversationId, messageId, emoji, receiverId);
     state.whenData((list) {
       final updated = list.map((m) {
         if (m.messageId == messageId) {
@@ -581,7 +772,8 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
   }
 
   Future<void> deleteForEveryone(String messageId, String receiverId) async {
-    await _repository.deleteMessageForEveryone(conversationId, messageId, receiverId);
+    await _repository.deleteMessageForEveryone(
+        conversationId, messageId, receiverId);
     state.whenData((list) {
       final updated = list.map((m) {
         if (m.messageId == messageId) {
@@ -596,9 +788,18 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
     });
   }
 
-  Future<void> markAsRead(String senderId) async {
-    await _repository.markConversationAsRead(conversationId, senderId);
-    await loadMessages();
+  Future<void> markAsRead(String participantId) async {
+    await _repository.markConversationAsRead(conversationId, participantId);
+    state.whenData((list) {
+      final updated = list.map((m) {
+        if (m.senderId == participantId &&
+            (m.status == 'sent' || m.status == 'delivered')) {
+          return m.copyWith(status: 'read');
+        }
+        return m;
+      }).toList();
+      state = AsyncValue.data(updated);
+    });
   }
 
   Future<void> clearConversation() async {
@@ -619,14 +820,16 @@ class ChatMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>>
   }
 }
 
-final chatMessagesProvider = StateNotifierProvider.autoDispose.family<ChatMessagesNotifier,
-    AsyncValue<List<MessageModel>>, String>((ref, conversationId) {
+final chatMessagesProvider = StateNotifierProvider.autoDispose
+    .family<ChatMessagesNotifier, AsyncValue<List<MessageModel>>, String>(
+        (ref, conversationId) {
   final repo = ref.watch(chatRepositoryProvider);
   return ChatMessagesNotifier(repo, conversationId);
 });
 
 /// Group messages notifier — mirrors [ChatMessagesNotifier] but for group chats.
-class GroupMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>> {
+class GroupMessagesNotifier
+    extends StateNotifier<AsyncValue<List<MessageModel>>> {
   final ChatRepository _repository;
   final String groupId;
   StreamSubscription? _msgSub;
@@ -634,6 +837,9 @@ class GroupMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>
   StreamSubscription? _deleteSub;
   StreamSubscription? _editSub;
   StreamSubscription? _reactionSub;
+  int _loadOffset = 0;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
 
   GroupMessagesNotifier(this._repository, this.groupId)
       : super(const AsyncValue.loading()) {
@@ -641,112 +847,46 @@ class GroupMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>
     _listenToEvents();
   }
 
-  void _listenToEvents() {
-    _msgSub = _repository.onGroupMessageReceivedStream.listen((msg) {
-      if (msg.groupId == groupId) {
-        state.whenData((list) {
-          final exists = list.any((m) => m.messageId == msg.messageId);
-          if (!exists) {
-            state = AsyncValue.data([...list, msg]);
-          }
-        });
-      }
-    });
+  bool get hasMore => _hasMore;
+  bool get isLoadingMore => _isLoadingMore;
 
-    _statusSub = _repository.onGroupMessageStatusStream.listen((data) {
-      final targetGroupId = data['groupId'];
-      final targetMsgId = data['messageId'];
-      final newStatus = data['status'];
+  Future<void> loadMessages({bool reset = true}) async {
+    if (reset) {
+      _loadOffset = 0;
+      _hasMore = true;
+      state = const AsyncValue.loading();
+    }
+    if (_isLoadingMore) return;
+    if (!_hasMore && !reset) return;
 
-      if (targetGroupId == groupId || targetGroupId == null) {
-        state.whenData((list) {
-          final updated = list.map((m) {
-            if (targetMsgId != null && m.messageId == targetMsgId) {
-              if (m.status == 'read') return m;
-              if (m.status == 'delivered' && (newStatus == 'sent' || newStatus == 'pending')) return m;
-              if (m.status == 'sent' && newStatus == 'pending') return m;
-              return m.copyWith(status: newStatus);
-            } else if (targetMsgId == null && newStatus == 'read') {
-              return m.copyWith(status: 'read');
-            }
-            return m;
-          }).toList();
-          state = AsyncValue.data(updated);
-        });
-      }
-    });
-
-    _deleteSub = _repository.onGroupMessageDeletedStream.listen((data) {
-      final targetGroupId = data['groupId'];
-      final targetMsgId = data['messageId'];
-      final deleteType = data['deleteType'];
-
-      if (targetGroupId == groupId && targetMsgId != null) {
-        state.whenData((list) {
-          if (deleteType == 'for_me') {
-            final filtered = list.where((m) => m.messageId != targetMsgId).toList();
-            state = AsyncValue.data(filtered);
-          } else if (deleteType == 'for_everyone') {
-            final updated = list.map((m) {
-              if (m.messageId == targetMsgId) {
-                return m.copyWith(
-                  text: 'This message was deleted',
-                  isDeletedForEveryone: true,
-                );
-              }
-              return m;
-            }).toList();
-            state = AsyncValue.data(updated);
-          }
-        });
-      }
-    });
-
-    _editSub = _repository.onGroupMessageEditedStream.listen((data) {
-      final targetGroupId = data['groupId'];
-      final targetMsgId = data['messageId'];
-      final newText = data['text'];
-
-      if (targetGroupId == groupId && targetMsgId != null) {
-        state.whenData((list) {
-          final updated = list.map((m) {
-            if (m.messageId == targetMsgId) {
-              return m.copyWith(text: newText, isEdited: true);
-            }
-            return m;
-          }).toList();
-          state = AsyncValue.data(updated);
-        });
-      }
-    });
-
-    _reactionSub = _repository.onGroupMessageReactionStream.listen((data) {
-      final targetGroupId = data['groupId'];
-      final targetMsgId = data['messageId'];
-      final rawReactions = data['reactions'];
-
-      if (targetGroupId == groupId && targetMsgId != null && rawReactions is Map) {
-        final Map<String, String> reactionsMap = rawReactions.map((k, v) => MapEntry(k.toString(), v.toString()));
-        state.whenData((list) {
-          final updated = list.map((m) {
-            if (m.messageId == targetMsgId) {
-              return m.copyWith(reactions: reactionsMap);
-            }
-            return m;
-          }).toList();
-          state = AsyncValue.data(updated);
-        });
-      }
-    });
-  }
-
-  Future<void> loadMessages() async {
+    _isLoadingMore = true;
     try {
-      final messages = await _repository.getGroupMessages(groupId);
-      state = AsyncValue.data(messages);
+      final messages = await _repository.getGroupMessages(
+        groupId,
+        limit: AppConfig.messagesPageSize,
+        offset: _loadOffset,
+      );
+      if (reset) {
+        _hasMore = messages.length >= AppConfig.messagesPageSize;
+        _loadOffset = messages.length;
+        state = AsyncValue.data(MessageModel.sortAndDeduplicate(messages));
+      } else {
+        _hasMore = messages.length >= AppConfig.messagesPageSize;
+        _loadOffset += messages.length;
+        state.whenData((list) {
+          state = AsyncValue.data(
+              MessageModel.sortAndDeduplicate([...messages, ...list]));
+        });
+      }
     } catch (e, st) {
       state = AsyncValue.error(e, st);
+    } finally {
+      _isLoadingMore = false;
     }
+  }
+
+  Future<void> loadMore() async {
+    await loadMessages(reset: false);
   }
 
   Future<void> sendMessage({
@@ -761,10 +901,8 @@ class GroupMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>
     );
 
     state.whenData((list) {
-      final exists = list.any((m) => m.messageId == message.messageId);
-      if (!exists) {
-        state = AsyncValue.data([...list, message]);
-      }
+      state = AsyncValue.data(
+          MessageModel.sortAndDeduplicate([...list, message]));
     });
   }
 
@@ -781,8 +919,10 @@ class GroupMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>
     });
   }
 
-  Future<void> toggleReaction(String messageId, String emoji, String currentUserId) async {
-    await _repository.toggleGroupReaction(groupId, messageId, emoji, currentUserId);
+  Future<void> toggleReaction(
+      String messageId, String emoji, String currentUserId) async {
+    await _repository.toggleGroupReaction(
+        groupId, messageId, emoji, currentUserId);
     state.whenData((list) {
       final updated = list.map((m) {
         if (m.messageId == messageId) {
@@ -824,6 +964,130 @@ class GroupMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>
     });
   }
 
+  void _listenToEvents() {
+    _msgSub = _repository.onGroupMessageReceivedStream.listen((msg) {
+      if (msg.groupId == groupId) {
+        state.whenData((list) {
+          state = AsyncValue.data(
+              MessageModel.sortAndDeduplicate([...list, msg]));
+        });
+      }
+    });
+
+    _statusSub = _repository.onGroupMessageStatusStream.listen((data) {
+      final targetGroupId = data['groupId'];
+      final targetMsgId = data['messageId'];
+      final newStatus = data['status'];
+
+      if (targetGroupId == groupId || targetGroupId == null) {
+        state.whenData((list) {
+          final updated = list.map((m) {
+            if (targetMsgId != null && m.messageId == targetMsgId) {
+              if (m.status == 'read') return m;
+              if (m.status == 'delivered' &&
+                  (newStatus == 'sent' || newStatus == 'pending')) {
+                return m;
+              }
+              if (m.status == 'sent' && newStatus == 'pending') {
+                return m;
+              }
+              return m.copyWith(status: newStatus);
+            } else if (targetMsgId == null && newStatus == 'read') {
+              return m.copyWith(status: 'read');
+            }
+            return m;
+          }).toList();
+          state = AsyncValue.data(updated);
+        });
+      }
+    });
+
+    _deleteSub = _repository.onGroupMessageDeletedStream.listen((data) {
+      final targetGroupId = data['groupId'];
+      final targetMsgId = data['messageId'];
+      final deleteType = data['deleteType'];
+
+      if (targetGroupId == groupId && targetMsgId != null) {
+        state.whenData((list) {
+          if (deleteType == 'for_me') {
+            final filtered =
+                list.where((m) => m.messageId != targetMsgId).toList();
+            state = AsyncValue.data(filtered);
+          } else if (deleteType == 'for_everyone') {
+            final updated = list.map((m) {
+              if (m.messageId == targetMsgId) {
+                return m.copyWith(
+                  text: 'This message was deleted',
+                  isDeletedForEveryone: true,
+                );
+              }
+              return m;
+            }).toList();
+            state = AsyncValue.data(updated);
+          }
+        });
+      }
+    });
+
+    _editSub = _repository.onGroupMessageEditedStream.listen((data) {
+      final targetGroupId = data['groupId'];
+      final targetMsgId = data['messageId'];
+      final newText = data['text'];
+
+      if (targetGroupId == groupId && targetMsgId != null) {
+        state.whenData((list) {
+          final updated = list.map((m) {
+            if (m.messageId == targetMsgId) {
+              return m.copyWith(text: newText, isEdited: true);
+            }
+            return m;
+          }).toList();
+          state = AsyncValue.data(updated);
+        });
+      }
+    });
+
+    _reactionSub = _repository.onGroupMessageReactionStream.listen((data) {
+      final targetGroupId = data['groupId'];
+      final targetMsgId = data['messageId'];
+      final rawReactions = data['reactions'];
+
+      if (targetGroupId == groupId &&
+          targetMsgId != null &&
+          rawReactions is Map) {
+        final Map<String, String> reactionsMap =
+            rawReactions.map((k, v) => MapEntry(k.toString(), v.toString()));
+        state.whenData((list) {
+          final updated = list.map((m) {
+            if (m.messageId == targetMsgId) {
+              return m.copyWith(reactions: reactionsMap);
+            }
+            return m;
+          }).toList();
+          state = AsyncValue.data(updated);
+        });
+      }
+    });
+  }
+
+  Future<void> updateMessageLocalPath(
+      String messageId, String localPath) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isNotEmpty) {
+      await LocalDatabaseHelper.instance
+          .updateMessageLocalPath(uid, messageId, localPath);
+    }
+    state.whenData((list) {
+      final updated = list.map((m) {
+        if (m.messageId == messageId) {
+          return m.copyWith(localPath: localPath);
+        }
+        return m;
+      }).toList();
+      state = AsyncValue.data(updated);
+    });
+  }
+
   @override
   void dispose() {
     _msgSub?.cancel();
@@ -835,8 +1099,9 @@ class GroupMessagesNotifier extends StateNotifier<AsyncValue<List<MessageModel>>
   }
 }
 
-final groupMessagesProvider = StateNotifierProvider.autoDispose.family<GroupMessagesNotifier,
-    AsyncValue<List<MessageModel>>, String>((ref, groupId) {
+final groupMessagesProvider = StateNotifierProvider.autoDispose
+    .family<GroupMessagesNotifier, AsyncValue<List<MessageModel>>, String>(
+        (ref, groupId) {
   final repo = ref.watch(chatRepositoryProvider);
   return GroupMessagesNotifier(repo, groupId);
 });

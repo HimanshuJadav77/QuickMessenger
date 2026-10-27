@@ -17,7 +17,7 @@ class GlassDialog {
   }) {
     HapticFeedback.mediumImpact();
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final accent = AppColors.accentPurple;
+    final accent = AppColors.accent(isDark);
 
     return showCupertinoDialog<bool>(
       context: context,
@@ -64,7 +64,8 @@ class GlassDialog {
                   confirmLabel,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: isDestructive ? CupertinoColors.destructiveRed : accent,
+                    color:
+                        isDestructive ? CupertinoColors.destructiveRed : accent,
                   ),
                 ),
               ),
@@ -85,7 +86,7 @@ class GlassDialog {
   }) {
     HapticFeedback.lightImpact();
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final accent = AppColors.accentPurple;
+    final accent = AppColors.accent(isDark);
 
     return showCupertinoDialog<void>(
       context: context,

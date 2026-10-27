@@ -111,8 +111,8 @@ class _RegisterState extends State<Register> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                final photo = await ImagePicker()
-                    .pickImage(source: ImageSource.camera);
+                final photo =
+                    await ImagePicker().pickImage(source: ImageSource.camera);
                 if (photo != null && mounted) {
                   setState(() => pickedImage = File(photo.path));
                 }
@@ -133,8 +133,8 @@ class _RegisterState extends State<Register> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                final photo = await ImagePicker()
-                    .pickImage(source: ImageSource.gallery);
+                final photo =
+                    await ImagePicker().pickImage(source: ImageSource.gallery);
                 if (photo != null && mounted) {
                   setState(() => pickedImage = File(photo.path));
                 }
@@ -197,8 +197,7 @@ class _RegisterState extends State<Register> {
       return;
     }
     setState(() => registering = true);
-    final exists =
-        await checkUsernameExists(usernameController.text.trim());
+    final exists = await checkUsernameExists(usernameController.text.trim());
     if (!mounted) return;
     if (exists) {
       setState(() => registering = false);
@@ -268,10 +267,19 @@ class _RegisterState extends State<Register> {
                   title: CupertinoTextField(
                     controller: usernameController,
                     placeholder: 'Username',
+                    placeholderStyle: TextStyle(
+                      color: AppColors.textMuted(isDark),
+                      fontSize: 16,
+                    ),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(isDark),
+                      fontSize: 16,
+                    ),
                     textInputAction: TextInputAction.next,
-                    prefix: const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: Icon(CupertinoIcons.person, size: 20),
+                    prefix: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(CupertinoIcons.person,
+                          size: 20, color: AppColors.textSecondary(isDark)),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: null,
@@ -281,11 +289,20 @@ class _RegisterState extends State<Register> {
                   title: CupertinoTextField(
                     controller: emailController,
                     placeholder: 'Email',
+                    placeholderStyle: TextStyle(
+                      color: AppColors.textMuted(isDark),
+                      fontSize: 16,
+                    ),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(isDark),
+                      fontSize: 16,
+                    ),
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
-                    prefix: const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: Icon(CupertinoIcons.mail, size: 20),
+                    prefix: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(CupertinoIcons.mail,
+                          size: 20, color: AppColors.textSecondary(isDark)),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: null,
@@ -295,22 +312,31 @@ class _RegisterState extends State<Register> {
                   title: CupertinoTextField(
                     controller: passController,
                     placeholder: 'Password',
+                    placeholderStyle: TextStyle(
+                      color: AppColors.textMuted(isDark),
+                      fontSize: 16,
+                    ),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(isDark),
+                      fontSize: 16,
+                    ),
                     obscureText: !showPass,
                     textInputAction: TextInputAction.next,
-                    prefix: const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: Icon(CupertinoIcons.lock, size: 20),
+                    prefix: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(CupertinoIcons.lock,
+                          size: 20, color: AppColors.textSecondary(isDark)),
                     ),
                     suffix: CupertinoButton(
                       padding: EdgeInsets.zero,
                       minimumSize: Size.zero,
-                      onPressed: () =>
-                          setState(() => showPass = !showPass),
+                      onPressed: () => setState(() => showPass = !showPass),
                       child: Icon(
                         showPass
                             ? CupertinoIcons.eye
                             : CupertinoIcons.eye_slash,
                         size: 20,
+                        color: AppColors.textSecondary(isDark),
                       ),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -321,23 +347,31 @@ class _RegisterState extends State<Register> {
                   title: CupertinoTextField(
                     controller: confirmPassController,
                     placeholder: 'Confirm password',
+                    placeholderStyle: TextStyle(
+                      color: AppColors.textMuted(isDark),
+                      fontSize: 16,
+                    ),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(isDark),
+                      fontSize: 16,
+                    ),
                     obscureText: !showCPass,
                     textInputAction: TextInputAction.done,
-                    prefix: const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child:
-                          Icon(CupertinoIcons.lock_fill, size: 20),
+                    prefix: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(CupertinoIcons.lock_fill,
+                          size: 20, color: AppColors.textSecondary(isDark)),
                     ),
                     suffix: CupertinoButton(
                       padding: EdgeInsets.zero,
                       minimumSize: Size.zero,
-                      onPressed: () =>
-                          setState(() => showCPass = !showCPass),
+                      onPressed: () => setState(() => showCPass = !showCPass),
                       child: Icon(
                         showCPass
                             ? CupertinoIcons.eye
                             : CupertinoIcons.eye_slash,
                         size: 20,
+                        color: AppColors.textSecondary(isDark),
                       ),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -362,8 +396,7 @@ class _RegisterState extends State<Register> {
               children: [
                 Text(
                   'Already have an account?',
-                  style: TextStyle(
-                      color: AppColors.textSecondary(isDark)),
+                  style: TextStyle(color: AppColors.textSecondary(isDark)),
                 ),
                 CupertinoButton(
                   padding: const EdgeInsets.symmetric(horizontal: 6),

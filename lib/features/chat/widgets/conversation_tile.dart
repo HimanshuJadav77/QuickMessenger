@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show Colors;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -21,7 +22,8 @@ class ConversationTile extends ConsumerWidget {
     this.onLongPress,
   });
 
-  void _showChatActions(BuildContext context, WidgetRef ref, ConversationModel c) {
+  void _showChatActions(
+      BuildContext context, WidgetRef ref, ConversationModel c) {
     HapticFeedback.selectionClick();
     LGActionSheet.show(
       context: context,
@@ -30,28 +32,38 @@ class ConversationTile extends ConsumerWidget {
       actions: [
         LGActionSheetAction(
           title: c.unreadCount > 0 ? 'Mark as read' : 'Mark as unread',
-          icon: c.unreadCount > 0 ? CupertinoIcons.check_mark_circled : CupertinoIcons.chat_bubble,
-          onPressed: () => ref.read(conversationsProvider.notifier).markUnread(c.id),
+          icon: c.unreadCount > 0
+              ? CupertinoIcons.check_mark_circled
+              : CupertinoIcons.chat_bubble,
+          onPressed: () =>
+              ref.read(conversationsProvider.notifier).markUnread(c.id),
         ),
         LGActionSheetAction(
           title: c.isPinned ? 'Unpin chat' : 'Pin chat',
           icon: c.isPinned ? CupertinoIcons.pin_slash : CupertinoIcons.pin,
-          onPressed: () => ref.read(conversationsProvider.notifier).togglePin(c.id, !c.isPinned),
+          onPressed: () => ref
+              .read(conversationsProvider.notifier)
+              .togglePin(c.id, !c.isPinned),
         ),
         LGActionSheetAction(
           title: c.isMuted ? 'Unmute' : 'Mute',
           icon: c.isMuted ? CupertinoIcons.bell : CupertinoIcons.bell_slash,
-          onPressed: () => ref.read(conversationsProvider.notifier).toggleMute(c.id, !c.isMuted),
+          onPressed: () => ref
+              .read(conversationsProvider.notifier)
+              .toggleMute(c.id, !c.isMuted),
         ),
         LGActionSheetAction(
           title: c.isArchived ? 'Unarchive' : 'Archive',
           icon: CupertinoIcons.archivebox,
-          onPressed: () => ref.read(conversationsProvider.notifier).toggleArchive(c.id, !c.isArchived),
+          onPressed: () => ref
+              .read(conversationsProvider.notifier)
+              .toggleArchive(c.id, !c.isArchived),
         ),
         LGActionSheetAction(
           title: 'Add to Favorites',
           icon: CupertinoIcons.heart,
-          onPressed: () => ref.read(conversationsProvider.notifier).togglePin(c.id, true),
+          onPressed: () =>
+              ref.read(conversationsProvider.notifier).togglePin(c.id, true),
         ),
         LGActionSheetAction(
           title: 'Clear chat',
@@ -61,10 +73,13 @@ class ConversationTile extends ConsumerWidget {
             LGActionSheet.showConfirmation(
               context: context,
               title: 'Clear Chat?',
-              message: 'Delete all messages in this conversation from this device?',
+              message:
+                  'Delete all messages in this conversation from this device?',
               confirmTitle: 'Clear Chat',
               isDestructive: true,
-              onConfirm: () => ref.read(conversationsProvider.notifier).deleteConversation(c.id),
+              onConfirm: () => ref
+                  .read(conversationsProvider.notifier)
+                  .deleteConversation(c.id),
             );
           },
         ),
@@ -76,10 +91,13 @@ class ConversationTile extends ConsumerWidget {
             LGActionSheet.showConfirmation(
               context: context,
               title: 'Delete Chat?',
-              message: 'Are you sure you want to delete this chat with ${c.participantName}?',
+              message:
+                  'Are you sure you want to delete this chat with ${c.participantName}?',
               confirmTitle: 'Delete Chat',
               isDestructive: true,
-              onConfirm: () => ref.read(conversationsProvider.notifier).deleteConversation(c.id),
+              onConfirm: () => ref
+                  .read(conversationsProvider.notifier)
+                  .deleteConversation(c.id),
             );
           },
         ),
@@ -93,13 +111,24 @@ class ConversationTile extends ConsumerWidget {
     final accent = CupertinoTheme.of(context).primaryColor;
     final c = conversation;
 
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress ?? () => _showChatActions(context, ref, c),
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-            horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: onTap,
+        onLongPress: onLongPress ?? () => _showChatActions(context, ref, c),
+        behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xB31C1C1E) : const Color(0xF2FFFFFF),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.black.withValues(alpha: 0.06),
+            width: 0.75,
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
             UserAvatar(
@@ -143,7 +172,9 @@ class ConversationTile extends ConsumerWidget {
                           color: c.unreadCount > 0
                               ? accent
                               : AppColors.textMuted(isDark),
-                          fontWeight: c.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight: c.unreadCount > 0
+                              ? FontWeight.w600
+                              : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -170,7 +201,9 @@ class ConversationTile extends ConsumerWidget {
                       ),
                       Expanded(
                         child: Text(
-                          c.lastMessage.isEmpty ? 'No messages yet' : c.lastMessage,
+                          c.lastMessage.isEmpty
+                              ? 'No messages yet'
+                              : c.lastMessage,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -184,8 +217,10 @@ class ConversationTile extends ConsumerWidget {
                       if (c.unreadCount > 0) ...[
                         const SizedBox(width: 8),
                         Container(
-                          constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          constraints:
+                              const BoxConstraints(minWidth: 20, minHeight: 20),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: accent,
                             borderRadius: BorderRadius.circular(10),
@@ -210,24 +245,27 @@ class ConversationTile extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
+
+  static final _timeFormat = DateFormat('HH:mm');
+  static final _weekdayFormat = DateFormat('EEE');
+  static final _dateFormat = DateFormat('dd/MM/yy');
 
   String _formatTime(String raw) {
     try {
       final dt = DateTime.parse(raw).toLocal();
       final now = DateTime.now();
       if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
-        return DateFormat('HH:mm').format(dt);
+        return _timeFormat.format(dt);
       }
       if (now.difference(dt).inDays < 7) {
-        return DateFormat('EEE').format(dt);
+        return _weekdayFormat.format(dt);
       }
-      return DateFormat('dd/MM/yy').format(dt);
+      return _dateFormat.format(dt);
     } catch (_) {
       return '';
     }
   }
 }
-
-

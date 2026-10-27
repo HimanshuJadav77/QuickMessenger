@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 import '../theme/liquid_glass_tokens.dart';
 
 class LiquidGlassContainer extends StatelessWidget {
@@ -46,12 +47,13 @@ class LiquidGlassContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     if (level == 0) return child;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = AppColors.isDarkMode(context);
     final radius = _getRadius();
 
     Color fillColor = LiquidGlassTokens.getFillColor(level, isDark);
     if (accentTint != null) {
-      fillColor = Color.alphaBlend(accentTint!.withValues(alpha: 0.1), fillColor);
+      fillColor =
+          Color.alphaBlend(accentTint!.withValues(alpha: 0.1), fillColor);
     }
 
     return Container(
@@ -94,4 +96,3 @@ class LiquidGlassContainer extends StatelessWidget {
     );
   }
 }
-

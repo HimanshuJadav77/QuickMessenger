@@ -19,7 +19,7 @@ class LocalDatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 9,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -62,6 +62,11 @@ class LocalDatabaseHelper {
         reactions_json TEXT,
         client_created_at TEXT NOT NULL,
         server_created_at TEXT,
+        file_url TEXT,
+        local_path TEXT,
+        drive_file_id TEXT,
+        file_name TEXT,
+        file_size INTEGER,
         PRIMARY KEY (message_id, user_id)
       )
     ''');
@@ -88,6 +93,16 @@ class LocalDatabaseHelper {
     await db.execute(
       'CREATE INDEX idx_messages_created_at ON messages(client_created_at)',
     );
+
+    await db.execute('''
+      CREATE TABLE deleted_conversations(
+        conversation_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        participant_id TEXT NOT NULL,
+        deleted_at TEXT NOT NULL,
+        PRIMARY KEY (conversation_id, user_id)
+      )
+    ''');
   }
 
   Future<void> _createGroupTables(Database db) async {
@@ -150,17 +165,22 @@ class LocalDatabaseHelper {
 
     if (oldVersion < 3) {
       try {
-        await db.execute('ALTER TABLE messages ADD COLUMN is_deleted_for_me INTEGER DEFAULT 0');
-        await db.execute('ALTER TABLE messages ADD COLUMN is_deleted_for_everyone INTEGER DEFAULT 0');
+        await db.execute(
+            'ALTER TABLE messages ADD COLUMN is_deleted_for_me INTEGER DEFAULT 0');
+        await db.execute(
+            'ALTER TABLE messages ADD COLUMN is_deleted_for_everyone INTEGER DEFAULT 0');
       } catch (_) {}
     }
 
     if (oldVersion < 4) {
       try {
-        await db.execute('ALTER TABLE messages ADD COLUMN is_edited INTEGER DEFAULT 0');
-        await db.execute('ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT');
+        await db.execute(
+            'ALTER TABLE messages ADD COLUMN is_edited INTEGER DEFAULT 0');
+        await db.execute(
+            'ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT');
         await db.execute('ALTER TABLE messages ADD COLUMN reply_to_text TEXT');
-        await db.execute('ALTER TABLE messages ADD COLUMN reply_to_sender_id TEXT');
+        await db
+            .execute('ALTER TABLE messages ADD COLUMN reply_to_sender_id TEXT');
         await db.execute('ALTER TABLE messages ADD COLUMN reactions_json TEXT');
       } catch (_) {}
     }
@@ -188,9 +208,34 @@ class LocalDatabaseHelper {
         ''');
       } catch (_) {}
     }
+
+    if (oldVersion < 8) {
+      try {
+        await db.execute('''
+          CREATE TABLE deleted_conversations(
+            conversation_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            participant_id TEXT NOT NULL,
+            deleted_at TEXT NOT NULL,
+            PRIMARY KEY (conversation_id, user_id)
+          )
+        ''');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 9) {
+      try {
+        await db.execute('ALTER TABLE messages ADD COLUMN file_url TEXT');
+        await db.execute('ALTER TABLE messages ADD COLUMN local_path TEXT');
+        await db.execute('ALTER TABLE messages ADD COLUMN drive_file_id TEXT');
+        await db.execute('ALTER TABLE messages ADD COLUMN file_name TEXT');
+        await db.execute('ALTER TABLE messages ADD COLUMN file_size INTEGER');
+      } catch (_) {}
+    }
   }
 
-  Future<void> upsertGroup(String currentUserId, Map<String, dynamic> groupData) async {
+  Future<void> upsertGroup(
+      String currentUserId, Map<String, dynamic> groupData) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.insert(
@@ -201,10 +246,14 @@ class LocalDatabaseHelper {
         'name': groupData['name'] ?? 'Group',
         'description': groupData['description'] ?? '',
         'image_url': groupData['image_url'] ?? groupData['imageUrl'] ?? '',
-        'created_by': groupData['created_by'] ?? groupData['createdBy'] ?? currentUserId,
-        'created_at': groupData['created_at'] ?? groupData['createdAt'] ?? DateTime.now().toIso8601String(),
+        'created_by':
+            groupData['created_by'] ?? groupData['createdBy'] ?? currentUserId,
+        'created_at': groupData['created_at'] ??
+            groupData['createdAt'] ??
+            DateTime.now().toIso8601String(),
         'my_role': groupData['my_role'] ?? groupData['myRole'] ?? 'member',
-        'member_count': groupData['member_count'] ?? groupData['memberCount'] ?? 1,
+        'member_count':
+            groupData['member_count'] ?? groupData['memberCount'] ?? 1,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -223,7 +272,8 @@ class LocalDatabaseHelper {
     ''', [currentUserId]);
   }
 
-  Future<Map<String, dynamic>?> getLatestGroupMessage(String currentUserId, String groupId) async {
+  Future<Map<String, dynamic>?> getLatestGroupMessage(
+      String currentUserId, String groupId) async {
     if (currentUserId.isEmpty || groupId.isEmpty) return null;
     final db = await database;
     final res = await db.query(
@@ -237,7 +287,8 @@ class LocalDatabaseHelper {
     return null;
   }
 
-  Future<void> insertGroupMembers(String groupId, List<Map<String, dynamic>> members) async {
+  Future<void> insertGroupMembers(
+      String groupId, List<Map<String, dynamic>> members) async {
     if (groupId.isEmpty || members.isEmpty) return;
     final db = await database;
     final batch = db.batch();
@@ -248,10 +299,15 @@ class LocalDatabaseHelper {
           'group_id': groupId,
           'uid': member['uid'],
           'username': member['username'] ?? 'User',
-          'display_name': member['display_name'] ?? member['displayName'] ?? member['username'] ?? 'User',
+          'display_name': member['display_name'] ??
+              member['displayName'] ??
+              member['username'] ??
+              'User',
           'image_url': member['image_url'] ?? member['imageUrl'] ?? '',
           'role': member['role'] ?? 'member',
-          'joined_at': member['joined_at'] ?? member['joinedAt'] ?? DateTime.now().toIso8601String(),
+          'joined_at': member['joined_at'] ??
+              member['joinedAt'] ??
+              DateTime.now().toIso8601String(),
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -273,12 +329,18 @@ class LocalDatabaseHelper {
   Future<void> deleteGroup(String currentUserId, String groupId) async {
     if (currentUserId.isEmpty || groupId.isEmpty) return;
     final db = await database;
-    await db.delete('groups', where: 'group_id = ? AND user_id = ?', whereArgs: [groupId, currentUserId]);
-    await db.delete('group_members', where: 'group_id = ?', whereArgs: [groupId]);
-    await db.delete('group_messages', where: 'group_id = ? AND user_id = ?', whereArgs: [groupId, currentUserId]);
+    await db.delete('groups',
+        where: 'group_id = ? AND user_id = ?',
+        whereArgs: [groupId, currentUserId]);
+    await db
+        .delete('group_members', where: 'group_id = ?', whereArgs: [groupId]);
+    await db.delete('group_messages',
+        where: 'group_id = ? AND user_id = ?',
+        whereArgs: [groupId, currentUserId]);
   }
 
-  Future<void> insertGroupMessage(String currentUserId, Map<String, dynamic> msgData) async {
+  Future<void> insertGroupMessage(
+      String currentUserId, Map<String, dynamic> msgData) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.insert(
@@ -288,28 +350,34 @@ class LocalDatabaseHelper {
         'user_id': currentUserId,
         'group_id': msgData['group_id'] ?? msgData['groupId'],
         'sender_id': msgData['sender_id'] ?? msgData['senderId'],
-        'sender_name': msgData['sender_name'] ?? msgData['senderName'] ?? 'Member',
+        'sender_name':
+            msgData['sender_name'] ?? msgData['senderName'] ?? 'Member',
         'type': msgData['type'] ?? 'text',
         'text': msgData['text'] ?? '',
         'status': msgData['status'] ?? 'sent',
         'reactions_json': msgData['reactions_json'],
-        'client_created_at': msgData['client_created_at'] ?? msgData['clientCreatedAt'] ?? DateTime.now().toIso8601String(),
+        'client_created_at': msgData['client_created_at'] ??
+            msgData['clientCreatedAt'] ??
+            DateTime.now().toIso8601String(),
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  Future<List<Map<String, dynamic>>> getGroupMessages(String currentUserId, String groupId, {int limit = 50, int offset = 0}) async {
+  Future<List<Map<String, dynamic>>> getGroupMessages(
+      String currentUserId, String groupId,
+      {int limit = 50, int offset = 0}) async {
     if (currentUserId.isEmpty) return [];
     final db = await database;
-    return await db.query(
+    final rows = await db.query(
       'group_messages',
       where: 'group_id = ? AND user_id = ?',
       whereArgs: [groupId, currentUserId],
-      orderBy: 'client_created_at ASC',
+      orderBy: 'client_created_at DESC',
       limit: limit,
       offset: offset,
     );
+    return rows.reversed.toList();
   }
 
   Future<void> upsertConversation({
@@ -349,7 +417,9 @@ class LocalDatabaseHelper {
         'unread_count': newUnread,
       };
 
-      if (participantName != null && participantName.isNotEmpty && participantName != 'User') {
+      if (participantName != null &&
+          participantName.isNotEmpty &&
+          participantName != 'User') {
         updateValues['participant_name'] = participantName;
       }
       if (participantImageUrl != null && participantImageUrl.isNotEmpty) {
@@ -370,7 +440,10 @@ class LocalDatabaseHelper {
           'id': conversationId,
           'user_id': currentUserId,
           'participant_id': participantId,
-          'participant_name': (participantName != null && participantName.isNotEmpty) ? participantName : 'User',
+          'participant_name':
+              (participantName != null && participantName.isNotEmpty)
+                  ? participantName
+                  : 'User',
           'participant_imageurl': participantImageUrl ?? '',
           'last_message': lastMessage,
           'last_timestamp': lastTimestamp,
@@ -384,10 +457,13 @@ class LocalDatabaseHelper {
     }
   }
 
-  Future<Map<String, dynamic>?> getConversation(String currentUserId, String conversationId) async {
+  Future<Map<String, dynamic>?> getConversation(
+      String currentUserId, String conversationId) async {
     if (currentUserId.isEmpty || conversationId.isEmpty) return null;
     final db = await database;
-    final cleanId = conversationId.startsWith('conv_') ? conversationId : 'conv_$conversationId';
+    final cleanId = conversationId.startsWith('conv_')
+        ? conversationId
+        : 'conv_$conversationId';
     final rawId = conversationId.replaceFirst('conv_', '');
     final res = await db.query(
       'conversations',
@@ -399,18 +475,21 @@ class LocalDatabaseHelper {
     return null;
   }
 
-  Future<List<Map<String, dynamic>>> getConversations(String currentUserId) async {
+  Future<List<Map<String, dynamic>>> getConversations(
+      String currentUserId) async {
     if (currentUserId.isEmpty) return [];
     final db = await database;
     return await db.query(
       'conversations',
-      where: 'user_id = ? AND last_message IS NOT NULL AND TRIM(last_message) != "" AND last_message != "Tap to chat"',
+      where:
+          'user_id = ? AND last_message IS NOT NULL AND TRIM(last_message) != "" AND last_message != "Tap to chat"',
       whereArgs: [currentUserId],
       orderBy: 'is_pinned DESC, last_timestamp DESC',
     );
   }
 
-  Future<void> togglePinConversation(String currentUserId, String conversationId, bool isPinned) async {
+  Future<void> togglePinConversation(
+      String currentUserId, String conversationId, bool isPinned) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -421,7 +500,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> toggleArchiveConversation(String currentUserId, String conversationId, bool isArchived) async {
+  Future<void> toggleArchiveConversation(
+      String currentUserId, String conversationId, bool isArchived) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -432,7 +512,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> toggleMuteConversation(String currentUserId, String conversationId, bool isMuted) async {
+  Future<void> toggleMuteConversation(
+      String currentUserId, String conversationId, bool isMuted) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -443,7 +524,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> markUnreadConversation(String currentUserId, String conversationId) async {
+  Future<void> markUnreadConversation(
+      String currentUserId, String conversationId) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -454,10 +536,13 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> resetUnreadCount(String currentUserId, String conversationId) async {
+  Future<void> resetUnreadCount(
+      String currentUserId, String conversationId) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
-    final cleanId = conversationId.startsWith('conv_') ? conversationId : 'conv_$conversationId';
+    final cleanId = conversationId.startsWith('conv_')
+        ? conversationId
+        : 'conv_$conversationId';
     final rawId = conversationId.replaceFirst('conv_', '');
     await db.update(
       'conversations',
@@ -467,8 +552,31 @@ class LocalDatabaseHelper {
     );
   }
 
+  Future<List<Map<String, dynamic>>> getUnreadMessages(
+      String currentUserId, String conversationId) async {
+    if (currentUserId.isEmpty) return [];
+    final db = await database;
+    final cleanId = conversationId.startsWith('conv_')
+        ? conversationId
+        : 'conv_$conversationId';
+    final rawId = conversationId.replaceFirst('conv_', '');
+    return await db.query(
+      'messages',
+      where:
+          '(conversation_id = ? OR conversation_id = ?) AND user_id = ? AND (sender_id != ? OR sender_id IS NULL) AND status IN (?, ?) AND (is_deleted_for_me IS NULL OR is_deleted_for_me = 0)',
+      whereArgs: [
+        cleanId,
+        rawId,
+        currentUserId,
+        currentUserId,
+        'sent',
+        'delivered'
+      ],
+    );
+  }
 
-  Future<void> deleteConversation(String currentUserId, String conversationId) async {
+  Future<void> deleteConversation(
+      String currentUserId, String conversationId) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.delete(
@@ -483,7 +591,40 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> clearConversation(String currentUserId, String conversationId) async {
+  Future<void> addDeletedConversationTombstone(
+    String currentUserId,
+    String conversationId,
+    String participantId,
+  ) async {
+    if (currentUserId.isEmpty || conversationId.isEmpty) return;
+    final db = await database;
+    await db.insert(
+      'deleted_conversations',
+      {
+        'conversation_id': conversationId,
+        'user_id': currentUserId,
+        'participant_id': participantId,
+        'deleted_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<bool> isConversationDeleted(
+      String currentUserId, String conversationId) async {
+    if (currentUserId.isEmpty || conversationId.isEmpty) return false;
+    final db = await database;
+    final result = await db.query(
+      'deleted_conversations',
+      where: 'conversation_id = ? AND user_id = ?',
+      whereArgs: [conversationId, currentUserId],
+      limit: 1,
+    );
+    return result.isNotEmpty;
+  }
+
+  Future<void> clearConversation(
+      String currentUserId, String conversationId) async {
     if (currentUserId.isEmpty || conversationId.isEmpty) return;
     final db = await database;
     await db.delete(
@@ -502,7 +643,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> insertMessage(String currentUserId, Map<String, dynamic> messageData) async {
+  Future<void> insertMessage(
+      String currentUserId, Map<String, dynamic> messageData) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.insert(
@@ -510,23 +652,102 @@ class LocalDatabaseHelper {
       {
         'message_id': messageData['message_id'] ?? messageData['messageId'],
         'user_id': currentUserId,
-        'conversation_id': messageData['conversation_id'] ?? messageData['conversationId'],
+        'conversation_id':
+            messageData['conversation_id'] ?? messageData['conversationId'],
         'sender_id': messageData['sender_id'] ?? messageData['senderId'],
         'receiver_id': messageData['receiver_id'] ?? messageData['receiverId'],
         'type': messageData['type'] ?? 'text',
         'text': messageData['text'] ?? '',
         'status': messageData['status'] ?? 'pending',
-        'is_deleted_for_me': (messageData['is_deleted_for_me'] == 1 || messageData['is_deleted_for_me'] == true) ? 1 : 0,
-        'is_deleted_for_everyone': (messageData['is_deleted_for_everyone'] == 1 || messageData['is_deleted_for_everyone'] == true) ? 1 : 0,
-        'is_edited': (messageData['is_edited'] == 1 || messageData['is_edited'] == true) ? 1 : 0,
-        'reply_to_message_id': messageData['reply_to_message_id'] ?? messageData['replyToMessageId'],
-        'reply_to_text': messageData['reply_to_text'] ?? messageData['replyToText'],
-        'reply_to_sender_id': messageData['reply_to_sender_id'] ?? messageData['replyToSenderId'],
+        'is_deleted_for_me': (messageData['is_deleted_for_me'] == 1 ||
+                messageData['is_deleted_for_me'] == true)
+            ? 1
+            : 0,
+        'is_deleted_for_everyone':
+            (messageData['is_deleted_for_everyone'] == 1 ||
+                    messageData['is_deleted_for_everyone'] == true)
+                ? 1
+                : 0,
+        'is_edited':
+            (messageData['is_edited'] == 1 || messageData['is_edited'] == true)
+                ? 1
+                : 0,
+        'reply_to_message_id': messageData['reply_to_message_id'] ??
+            messageData['replyToMessageId'],
+        'reply_to_text':
+            messageData['reply_to_text'] ?? messageData['replyToText'],
+        'reply_to_sender_id':
+            messageData['reply_to_sender_id'] ?? messageData['replyToSenderId'],
         'reactions_json': messageData['reactions_json'],
-        'client_created_at': messageData['client_created_at'] ?? messageData['clientCreatedAt'],
-        'server_created_at': messageData['server_created_at'] ?? messageData['serverCreatedAt'],
+        'client_created_at':
+            messageData['client_created_at'] ?? messageData['clientCreatedAt'],
+        'server_created_at':
+            messageData['server_created_at'] ?? messageData['serverCreatedAt'],
+        'file_url': messageData['file_url'] ?? messageData['fileUrl'],
+        'local_path': messageData['local_path'] ?? messageData['localPath'],
+        'drive_file_id':
+            messageData['drive_file_id'] ?? messageData['driveFileId'],
+        'file_name': messageData['file_name'] ?? messageData['fileName'],
+        'file_size': messageData['file_size'] ?? messageData['fileSize'],
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> updateMessageLocalPath(
+      String currentUserId, String messageId, String localPath) async {
+    if (currentUserId.isEmpty || messageId.isEmpty) return;
+    final db = await database;
+    await db.update(
+      'messages',
+      {'local_path': localPath},
+      where: 'message_id = ? AND user_id = ?',
+      whereArgs: [messageId, currentUserId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getDriveFilesForConversation(
+      String currentUserId, String conversationId) async {
+    if (currentUserId.isEmpty) return [];
+    final db = await database;
+    final cleanId = conversationId.startsWith('conv_')
+        ? conversationId
+        : 'conv_$conversationId';
+    final rawId = conversationId.replaceFirst('conv_', '');
+    return await db.query(
+      'messages',
+      columns: [
+        'message_id',
+        'drive_file_id',
+        'file_name',
+        'file_size',
+        'local_path',
+        'type'
+      ],
+      where:
+          '(conversation_id = ? OR conversation_id = ?) AND user_id = ? AND drive_file_id IS NOT NULL AND drive_file_id != ""',
+      whereArgs: [cleanId, rawId, currentUserId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAllDriveFiles(
+      String currentUserId) async {
+    if (currentUserId.isEmpty) return [];
+    final db = await database;
+    return await db.query(
+      'messages',
+      columns: [
+        'message_id',
+        'drive_file_id',
+        'file_name',
+        'file_size',
+        'local_path',
+        'conversation_id',
+        'type'
+      ],
+      where:
+          'user_id = ? AND drive_file_id IS NOT NULL AND drive_file_id != ""',
+      whereArgs: [currentUserId],
     );
   }
 
@@ -538,19 +759,25 @@ class LocalDatabaseHelper {
   }) async {
     if (currentUserId.isEmpty) return [];
     final db = await database;
-    final cleanId = conversationId.startsWith('conv_') ? conversationId : 'conv_$conversationId';
+    final cleanId = conversationId.startsWith('conv_')
+        ? conversationId
+        : 'conv_$conversationId';
     final rawId = conversationId.replaceFirst('conv_', '');
-    return await db.query(
+    final rows = await db.query(
       'messages',
-      where: '(conversation_id = ? OR conversation_id = ?) AND user_id = ? AND (is_deleted_for_me IS NULL OR is_deleted_for_me = 0)',
+      where:
+          '(conversation_id = ? OR conversation_id = ?) AND user_id = ? AND (is_deleted_for_me IS NULL OR is_deleted_for_me = 0)',
       whereArgs: [cleanId, rawId, currentUserId],
-      orderBy: 'client_created_at ASC',
+      orderBy: 'client_created_at DESC',
       limit: limit,
       offset: offset,
     );
+    // Reverse to return them in chronological order (oldest to newest)
+    return rows.reversed.toList();
   }
 
-  Future<List<Map<String, dynamic>>> getPendingMessages(String currentUserId) async {
+  Future<List<Map<String, dynamic>>> getPendingMessages(
+      String currentUserId) async {
     if (currentUserId.isEmpty) return [];
     final db = await database;
     return await db.query(
@@ -561,7 +788,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> updateMessageStatus(String currentUserId, String messageId, String status) async {
+  Future<void> updateMessageStatus(
+      String currentUserId, String messageId, String status) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -572,20 +800,123 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> updateAllMessagesStatusForConversation(String currentUserId, String conversationId, String status) async {
+  Future<void> updateMessageMedia(
+    String currentUserId,
+    String messageId, {
+    required String fileUrl,
+    String? driveFileId,
+    String? fileName,
+    int? fileSize,
+    String? status,
+  }) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
-    final cleanId = conversationId.startsWith('conv_') ? conversationId : 'conv_$conversationId';
+    await db.update(
+      'messages',
+      {
+        'file_url': fileUrl,
+        if (driveFileId != null) 'drive_file_id': driveFileId,
+        if (fileName != null) 'file_name': fileName,
+        if (fileSize != null) 'file_size': fileSize,
+        if (status != null) 'status': status,
+      },
+      where: 'message_id = ? AND user_id = ?',
+      whereArgs: [messageId, currentUserId],
+    );
+  }
+
+  Future<void> updateIncomingMessagesStatusForConversation(
+    String currentUserId,
+    String conversationId,
+    String status, {
+    List<String>? messageIds,
+  }) async {
+    if (currentUserId.isEmpty) return;
+    final db = await database;
+    final cleanId = conversationId.startsWith('conv_')
+        ? conversationId
+        : 'conv_$conversationId';
     final rawId = conversationId.replaceFirst('conv_', '');
 
-    if (status == 'read' || status == 'seen') {
+    if (messageIds != null && messageIds.isNotEmpty) {
+      final placeholders = List.filled(messageIds.length, '?').join(',');
       await db.update(
         'messages',
         {'status': status},
-        where: '(conversation_id = ? OR conversation_id = ?) AND user_id = ? AND status IN (?, ?)',
-        whereArgs: [cleanId, rawId, currentUserId, 'sent', 'delivered'],
+        where:
+            'message_id IN ($placeholders) AND user_id = ? AND (sender_id != ? OR sender_id IS NULL)',
+        whereArgs: [...messageIds, currentUserId, currentUserId],
       );
     } else {
+      await db.update(
+        'messages',
+        {'status': status},
+        where:
+            '(conversation_id = ? OR conversation_id = ?) AND user_id = ? AND (sender_id != ? OR sender_id IS NULL) AND status IN (?, ?)',
+        whereArgs: [
+          cleanId,
+          rawId,
+          currentUserId,
+          currentUserId,
+          'sent',
+          'delivered'
+        ],
+      );
+    }
+  }
+
+  Future<void> updateSentMessagesStatusForConversation(
+    String currentUserId,
+    String conversationId,
+    String status, {
+    List<String>? messageIds,
+  }) async {
+    if (currentUserId.isEmpty) return;
+    final db = await database;
+    final cleanId = conversationId.startsWith('conv_')
+        ? conversationId
+        : 'conv_$conversationId';
+    final rawId = conversationId.replaceFirst('conv_', '');
+
+    if (messageIds != null && messageIds.isNotEmpty) {
+      final placeholders = List.filled(messageIds.length, '?').join(',');
+      await db.update(
+        'messages',
+        {'status': status},
+        where:
+            'message_id IN ($placeholders) AND user_id = ? AND sender_id = ?',
+        whereArgs: [...messageIds, currentUserId, currentUserId],
+      );
+    } else {
+      await db.update(
+        'messages',
+        {'status': status},
+        where:
+            '(conversation_id = ? OR conversation_id = ?) AND user_id = ? AND sender_id = ? AND status IN (?, ?)',
+        whereArgs: [
+          cleanId,
+          rawId,
+          currentUserId,
+          currentUserId,
+          'sent',
+          'delivered'
+        ],
+      );
+    }
+  }
+
+  Future<void> updateAllMessagesStatusForConversation(
+      String currentUserId, String conversationId, String status) async {
+    if (currentUserId.isEmpty) return;
+    if (status == 'read' || status == 'seen') {
+      await updateIncomingMessagesStatusForConversation(
+          currentUserId, conversationId, status);
+    } else {
+      final db = await database;
+      final cleanId = conversationId.startsWith('conv_')
+          ? conversationId
+          : 'conv_$conversationId';
+      final rawId = conversationId.replaceFirst('conv_', '');
       await db.update(
         'messages',
         {'status': status},
@@ -595,8 +926,8 @@ class LocalDatabaseHelper {
     }
   }
 
-
-  Future<void> updateEditedMessage(String currentUserId, String messageId, String newText) async {
+  Future<void> updateEditedMessage(
+      String currentUserId, String messageId, String newText) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -610,7 +941,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> updateMessageReactions(String currentUserId, String messageId, String reactionsJson) async {
+  Future<void> updateMessageReactions(
+      String currentUserId, String messageId, String reactionsJson) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -621,7 +953,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> markMessageDeletedForMe(String currentUserId, String messageId) async {
+  Future<void> markMessageDeletedForMe(
+      String currentUserId, String messageId) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -632,7 +965,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<void> markMessageDeletedForEveryone(String currentUserId, String messageId) async {
+  Future<void> markMessageDeletedForEveryone(
+      String currentUserId, String messageId) async {
     if (currentUserId.isEmpty) return;
     final db = await database;
     await db.update(
@@ -646,7 +980,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<List<Map<String, dynamic>>> searchAllMessages(String currentUserId, String query) async {
+  Future<List<Map<String, dynamic>>> searchAllMessages(
+      String currentUserId, String query) async {
     if (currentUserId.isEmpty || query.trim().isEmpty) return [];
     final db = await database;
     final searchTerm = '%${query.trim()}%';
@@ -666,7 +1001,7 @@ class LocalDatabaseHelper {
       ORDER BY m.client_created_at DESC
       LIMIT 50
     ''', [currentUserId, searchTerm]);
-    
+
     final groupMessages = await db.rawQuery('''
       SELECT 
         gm.message_id, gm.text, gm.client_created_at, gm.type, gm.sender_id,
@@ -683,8 +1018,10 @@ class LocalDatabaseHelper {
     results.addAll(groupMessages);
 
     results.sort((a, b) {
-      final dateA = DateTime.tryParse(a['client_created_at'] ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final dateB = DateTime.tryParse(b['client_created_at'] ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final dateA = DateTime.tryParse(a['client_created_at'] ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final dateB = DateTime.tryParse(b['client_created_at'] ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
       return dateB.compareTo(dateA);
     });
 
@@ -692,7 +1029,8 @@ class LocalDatabaseHelper {
   }
 
   // ── User Profiles Cache ──────────────────────────────────────────
-  Future<void> upsertUserProfile(String currentUserId, String uid, Map<String, dynamic> profileData) async {
+  Future<void> upsertUserProfile(String currentUserId, String uid,
+      Map<String, dynamic> profileData) async {
     if (currentUserId.isEmpty || uid.isEmpty) return;
     final db = await database;
     await db.insert(
@@ -701,7 +1039,8 @@ class LocalDatabaseHelper {
         'uid': uid,
         'user_id': currentUserId,
         'username': profileData['username'] ?? '',
-        'display_name': profileData['display_name'] ?? profileData['displayName'] ?? '',
+        'display_name':
+            profileData['display_name'] ?? profileData['displayName'] ?? '',
         'about': profileData['about'] ?? '',
         'email': profileData['email'] ?? '',
         'image_url': profileData['image_url'] ?? profileData['imageUrl'] ?? '',
@@ -711,7 +1050,8 @@ class LocalDatabaseHelper {
     );
   }
 
-  Future<Map<String, dynamic>?> getUserProfile(String currentUserId, String uid) async {
+  Future<Map<String, dynamic>?> getUserProfile(
+      String currentUserId, String uid) async {
     if (currentUserId.isEmpty || uid.isEmpty) return null;
     final db = await database;
     final results = await db.query(
@@ -724,7 +1064,8 @@ class LocalDatabaseHelper {
     return results.first;
   }
 
-  Future<void> updateUserProfileLocally(String currentUserId, String uid, Map<String, dynamic> updates) async {
+  Future<void> updateUserProfileLocally(
+      String currentUserId, String uid, Map<String, dynamic> updates) async {
     if (currentUserId.isEmpty || uid.isEmpty) return;
     final db = await database;
     updates['last_updated'] = DateTime.now().toIso8601String();
@@ -735,5 +1076,30 @@ class LocalDatabaseHelper {
       whereArgs: [uid, currentUserId],
     );
   }
-}
 
+  Future<List<Map<String, dynamic>>> searchCachedUserProfiles(
+      String currentUserId, String query) async {
+    if (currentUserId.isEmpty || query.trim().isEmpty) return [];
+    final db = await database;
+    final term = '%${query.toLowerCase().trim()}%';
+    return await db.query(
+      'user_profiles',
+      where:
+          'user_id = ? AND uid != ? AND (LOWER(username) LIKE ? OR LOWER(display_name) LIKE ? OR LOWER(email) LIKE ?)',
+      whereArgs: [currentUserId, currentUserId, term, term, term],
+      limit: 30,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAllCachedUserProfiles(
+      String currentUserId) async {
+    if (currentUserId.isEmpty) return [];
+    final db = await database;
+    return await db.query(
+      'user_profiles',
+      where: 'user_id = ? AND uid != ?',
+      whereArgs: [currentUserId, currentUserId],
+      limit: 100,
+    );
+  }
+}

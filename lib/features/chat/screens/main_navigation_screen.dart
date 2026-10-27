@@ -50,7 +50,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     WidgetsBinding.instance.addObserver(this);
   }
 
-
   void _guardEmailVerified() {
     final verified = FirebaseAuth.instance.currentUser?.emailVerified ?? true;
     if (!verified && mounted) {
@@ -97,13 +96,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   void _onTabTapped(int index) {
+    if (_currentIndex == index) return;
     HapticFeedback.selectionClick();
+    final distance = (index - _currentIndex).abs();
     setState(() => _currentIndex = index);
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeInOutCubic,
-    );
+    if (distance > 1) {
+      _pageController.jumpToPage(index);
+    } else {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   @override
@@ -113,10 +118,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
     final accent = CupertinoTheme.of(context).primaryColor;
 
-    final unreadTotal = conversationsAsync.value
-            ?.where((c) => c.unreadCount > 0)
-            .length ??
-        0;
+    final unreadTotal =
+        conversationsAsync.value?.where((c) => c.unreadCount > 0).length ?? 0;
 
     return uidAsync.when(
       loading: () => const CupertinoPageScaffold(
@@ -135,7 +138,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         if (currentUserId != uid) currentUserId = uid;
 
         return StreamBuilder<DocumentSnapshot>(
-          stream: _firestore.collection("disabled_account").doc(uid).snapshots(),
+          stream:
+              _firestore.collection("disabled_account").doc(uid).snapshots(),
           builder: (context, dsnapshot) {
             if (!dsnapshot.hasData || !(dsnapshot.data?.exists ?? false)) {
               if (dsnapshot.connectionState != ConnectionState.waiting) {
@@ -179,7 +183,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       // Page 0: Updates
                       const SafeArea(bottom: false, child: Updates()),
                       // Page 1: Calls
-                      const CallsTabScreen(),
+                      CallsTabScreen(
+                        onNewCall: () => _onTabTapped(2),
+                      ),
                       // Page 2: Communities / Followed Contacts
                       const SafeArea(bottom: false, child: FollowedChatList()),
                       // Page 3: Chats (Primary chat list)
@@ -224,19 +230,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           icon: CupertinoIcons.person_crop_circle,
                           activeIcon: CupertinoIcons.person_crop_circle_fill,
                           label: "You",
-                          customWidget: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                            stream: _firestore.collection("Users").doc(uid).snapshots(),
+                          customWidget: StreamBuilder<
+                              DocumentSnapshot<Map<String, dynamic>>>(
+                            stream: _firestore
+                                .collection("Users")
+                                .doc(uid)
+                                .snapshots(),
                             builder: (context, userSnap) {
                               final data = userSnap.data?.data() ?? {};
-                              final username = (data["username"] ?? 'User').toString();
-                              final photoUrl = (data["userimageurl"] ?? '').toString();
+                              final username =
+                                  (data["username"] ?? 'User').toString();
+                              final photoUrl =
+                                  (data["userimageurl"] ?? '').toString();
                               final isSelected = _currentIndex == 4;
                               return Container(
                                 padding: const EdgeInsets.all(1.0),
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: isSelected ? accent : Colors.transparent,
+                                    color: isSelected
+                                        ? accent
+                                        : Colors.transparent,
                                     width: 1.5,
                                   ),
                                 ),
@@ -262,4 +276,3 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 }
-

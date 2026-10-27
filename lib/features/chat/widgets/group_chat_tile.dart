@@ -41,7 +41,20 @@ class GroupChatTile extends ConsumerWidget {
         const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         return days[dt.weekday - 1];
       } else {
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const months = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec'
+        ];
         return '${months[dt.month - 1]} ${dt.day}';
       }
     } catch (_) {
@@ -79,7 +92,8 @@ class GroupChatTile extends ConsumerWidget {
               LGActionSheet.showConfirmation(
                 context: context,
                 title: 'Delete "${group.name}"?',
-                message: 'This group will be deleted for all members and cannot be undone.',
+                message:
+                    'This group will be deleted for all members and cannot be undone.',
                 confirmTitle: 'Delete Group',
                 isDestructive: true,
                 onConfirm: () {
@@ -115,8 +129,10 @@ class GroupChatTile extends ConsumerWidget {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
     final primaryColor = CupertinoTheme.of(context).primaryColor;
     final currentUserId = ref.watch(currentUserIdProvider);
-    final isOwner = (group.createdBy == currentUserId) || (group.myRole == 'owner');
-    final hasMessage = group.lastMessage != null && group.lastMessage!.trim().isNotEmpty;
+    final isOwner =
+        (group.createdBy == currentUserId) || (group.myRole == 'owner');
+    final hasMessage =
+        group.lastMessage != null && group.lastMessage!.trim().isNotEmpty;
     final subtitleText = hasMessage ? group.lastMessage! : 'No messages yet';
 
     return GestureDetector(
@@ -134,134 +150,148 @@ class GroupChatTile extends ConsumerWidget {
             );
           },
       onLongPress: () => _showGroupOptions(context, ref, isOwner),
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-          child: Row(
-            children: [
-              // Group Avatar with distinction badge
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  UserAvatar(
-                    username: group.name,
-                    imageUrl: group.imageUrl,
-                    radius: 26,
-                  ),
-                  // Group distinction badge
-                  Positioned(
-                    right: -2,
-                    bottom: -2,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark ? Colors.white24 : Colors.black12,
-                          width: 1,
-                        ),
-                      ),
-                      child: Icon(
-                        CupertinoIcons.person_2_fill,
-                        size: 11,
-                        color: primaryColor,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xB31C1C1E) : const Color(0xF2FFFFFF),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.black.withValues(alpha: 0.06),
+            width: 0.75,
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            // Group Avatar with distinction badge
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                UserAvatar(
+                  username: group.name,
+                  imageUrl: group.imageUrl,
+                  radius: 26,
+                ),
+                // Group distinction badge
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isDark ? Colors.white24 : Colors.black12,
+                        width: 1,
                       ),
                     ),
+                    child: Icon(
+                      CupertinoIcons.person_2_fill,
+                      size: 11,
+                      color: primaryColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(width: AppSpacing.md),
+            // Group Name + Distinction Tag + Last Message
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          group.name,
+                          style: AppTypography.title.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary(isDark),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Group',
+                          style: AppTypography.caption.copyWith(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor,
+                          ),
+                        ),
+                      ),
+                      if (group.lastTimestamp != null &&
+                          group.lastTimestamp!.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatTimestamp(group.lastTimestamp!),
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.textMuted(isDark),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          subtitleText,
+                          style: hasMessage
+                              ? AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.textSecondary(isDark),
+                                  fontSize: 13,
+                                )
+                              : AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.textMuted(isDark),
+                                  fontStyle: FontStyle.italic,
+                                  fontSize: 13,
+                                ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (group.unreadCount > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: primaryColor,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${group.unreadCount}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
-              SizedBox(width: AppSpacing.md),
-              // Group Name + Distinction Tag + Last Message
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            group.name,
-                            style: AppTypography.title.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary(isDark),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: primaryColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            'Group',
-                            style: AppTypography.caption.copyWith(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: primaryColor,
-                            ),
-                          ),
-                        ),
-                        if (group.lastTimestamp != null && group.lastTimestamp!.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            _formatTimestamp(group.lastTimestamp!),
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.textMuted(isDark),
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            subtitleText,
-                            style: hasMessage
-                                ? AppTypography.bodyMedium.copyWith(
-                                    color: AppColors.textSecondary(isDark),
-                                    fontSize: 13,
-                                  )
-                                : AppTypography.bodyMedium.copyWith(
-                                    color: AppColors.textMuted(isDark),
-                                    fontStyle: FontStyle.italic,
-                                    fontSize: 13,
-                                  ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (group.unreadCount > 0) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: primaryColor,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '${group.unreadCount}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
+          ],
         ),
       ),
     );

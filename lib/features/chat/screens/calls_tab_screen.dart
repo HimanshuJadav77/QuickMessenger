@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Colors;
 import 'package:flutter/services.dart';
@@ -7,16 +8,20 @@ import 'package:quick_messenger/core/providers/auth_providers.dart';
 import 'package:quick_messenger/core/services/call_service.dart';
 import 'package:quick_messenger/core/theme/app_colors.dart';
 import 'package:quick_messenger/core/theme/app_spacing.dart';
-import 'package:quick_messenger/core/theme/app_typography.dart';
 import 'package:quick_messenger/core/widgets/liquid_glass_components.dart';
 import 'package:quick_messenger/core/widgets/user_avatar.dart';
 import 'package:quick_messenger/core/widgets/glass_dialog.dart';
+import 'package:quick_messenger/core/database/local_database_helper.dart';
+import 'package:quick_messenger/core/widgets/app_filter_chip.dart';
+import 'package:quick_messenger/core/widgets/app_screen_header.dart';
+import 'package:quick_messenger/core/services/user_profile_cache_service.dart';
 import 'package:quick_messenger/features/chat/models/call_model.dart';
 import 'package:quick_messenger/features/chat/screens/call_screen.dart';
 import 'package:quick_messenger/features/chat/screens/following_chats_screen.dart';
 
 class CallsTabScreen extends ConsumerStatefulWidget {
-  const CallsTabScreen({super.key});
+  final VoidCallback? onNewCall;
+  const CallsTabScreen({super.key, this.onNewCall});
 
   @override
   ConsumerState<CallsTabScreen> createState() => _CallsTabScreenState();
@@ -28,6 +33,25 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  final Map<String, String> _resolvedNames = {};
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _callsStream;
+  String? _streamUserId;
+
+  void _ensureStream(String currentUserId) {
+    if (_streamUserId == currentUserId && _callsStream != null) return;
+    _streamUserId = currentUserId;
+    if (currentUserId.isNotEmpty) {
+      _callsStream = FirebaseFirestore.instance
+          .collection("Users")
+          .doc(currentUserId)
+          .collection("call_logs")
+          .orderBy("timestamp", descending: true)
+          .snapshots();
+    } else {
+      _callsStream = null;
+    }
+  }
+
   @override
   bool get wantKeepAlive => true;
 
@@ -37,6 +61,109 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
     super.dispose();
   }
 
+  void _resolveMissingUsername(String otherUserId) {
+    if (_resolvedNames.containsKey(otherUserId)) return;
+    _resolvedNames[otherUserId] = '';
+    final currentUserId = ref.read(currentUserIdProvider);
+
+    final syncProfile =
+        UserProfileCacheService.instance.getProfileSync(otherUserId);
+    if (syncProfile != null) {
+      final name =
+          (syncProfile['username'] ?? syncProfile['name'] ?? '').toString();
+      if (name.isNotEmpty) {
+        _resolvedNames[otherUserId] = name;
+        return;
+      }
+    }
+
+    UserProfileCacheService.instance
+        .getProfile(currentUserId: currentUserId, targetUid: otherUserId)
+        .then((profile) {
+      if (profile != null && mounted) {
+        final name =
+            (profile['username'] ?? profile['name'] ?? '').toString();
+        if (name.isNotEmpty) {
+          setState(() {
+            _resolvedNames[otherUserId] = name;
+          });
+        }
+      }
+    }).catchError((_) {});
+  }
+
+  Future<void> _deleteCallLog(String callId) async {
+    final currentUserId = ref.read(currentUserIdProvider);
+    if (currentUserId.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection("Users")
+          .doc(currentUserId)
+          .collection("call_logs")
+          .doc(callId)
+          .delete();
+    } catch (e) {
+      debugPrint("[CallsTab] Error deleting call log: $e");
+    }
+  }
+
+  void _showCallActions({
+    required BuildContext context,
+    required String logId,
+    required String otherUserId,
+    required String username,
+    required String imageUrl,
+  }) {
+    HapticFeedback.selectionClick();
+    LGActionSheet.show(
+      context: context,
+      title: username,
+      message: 'Call history options',
+      actions: [
+        LGActionSheetAction(
+          title: 'Voice Call',
+          icon: CupertinoIcons.phone,
+          onPressed: () {
+            _initiateCall(
+              receiverId: otherUserId,
+              receiverName: username,
+              receiverImageUrl: imageUrl,
+              callType: CallType.voice,
+            );
+          },
+        ),
+        LGActionSheetAction(
+          title: 'Video Call',
+          icon: CupertinoIcons.videocam,
+          onPressed: () {
+            _initiateCall(
+              receiverId: otherUserId,
+              receiverName: username,
+              receiverImageUrl: imageUrl,
+              callType: CallType.video,
+            );
+          },
+        ),
+        LGActionSheetAction(
+          title: 'Delete Call Log',
+          icon: CupertinoIcons.trash,
+          isDestructive: true,
+          onPressed: () {
+            LGActionSheet.showConfirmation(
+              context: context,
+              title: 'Delete Call Log?',
+              message:
+                  'Are you sure you want to remove this call with $username from your history?',
+              confirmTitle: 'Delete',
+              isDestructive: true,
+              onConfirm: () => _deleteCallLog(logId),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   void _initiateCall({
     required String receiverId,
     required String receiverName,
@@ -44,13 +171,39 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
     required CallType callType,
   }) async {
     final currentUserId = ref.read(currentUserIdProvider);
-    String callerName = 'Me';
+    String callerName = 'User';
     String callerAvatar = '';
     try {
-      final userDoc = await FirebaseFirestore.instance.collection('Users').doc(currentUserId).get();
-      callerName = userDoc.data()?['name'] ?? userDoc.data()?['username'] ?? 'Me';
-      callerAvatar = userDoc.data()?['userimageurl'] ?? userDoc.data()?['imageurl'] ?? '';
+      final localMe = await LocalDatabaseHelper.instance
+          .getUserProfile(currentUserId, currentUserId);
+      if (localMe != null &&
+          localMe['username'] != null &&
+          localMe['username'].toString().isNotEmpty) {
+        callerName = localMe['username'].toString();
+        callerAvatar = (localMe['image_url'] ?? '').toString();
+      }
     } catch (_) {}
+    if (callerName == 'User') {
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('Users')
+            .doc(currentUserId)
+            .get();
+        final uData = userDoc.data();
+        if (uData != null) {
+          callerName = (uData['username'] ??
+                  uData['name'] ??
+                  FirebaseAuth.instance.currentUser?.displayName ??
+                  'User')
+              .toString();
+          callerAvatar = (uData['imageurl'] ??
+                  uData['userimageurl'] ??
+                  FirebaseAuth.instance.currentUser?.photoURL ??
+                  '')
+              .toString();
+        }
+      } catch (_) {}
+    }
 
     final call = CallModel(
       callId: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -63,7 +216,8 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
       callType: callType,
       status: CallStatus.calling,
     );
-    final error = await ref.read(callServiceProvider.notifier).initiateCall(call);
+    final error =
+        await ref.read(callServiceProvider.notifier).initiateCall(call);
     if (error != null) {
       if (mounted) {
         GlassDialog.showInfo(
@@ -123,40 +277,26 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
         bottom: false,
         child: Column(
           children: [
-            // ── Top Header Actions (Matching Chats Page) ──
-            Padding(
-              padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  LGIconButton(
-                    icon: CupertinoIcons.phone_badge_plus,
-                    color: accent,
-                    iconColor: Colors.white,
-                    onPressed: () {
+            // ── Top Header Row ──
+            AppScreenHeader(
+              title: 'Calls',
+              actions: [
+                AppHeaderIconButton(
+                  icon: CupertinoIcons.phone_badge_plus,
+                  isPrimary: true,
+                  onPressed: () {
+                    if (widget.onNewCall != null) {
+                      widget.onNewCall!();
+                    } else {
                       Navigator.push(
                         context,
-                        CupertinoPageRoute(builder: (_) => const FollowedChatList()),
+                        CupertinoPageRoute(
+                            builder: (_) => const FollowedChatList()),
                       );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            // Large Title: "Calls" (34pt Bold)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Calls',
-                  style: AppTypography.displayLarge.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary(isDark),
-                    letterSpacing: -0.5,
-                  ),
+                    }
+                  },
                 ),
-              ),
+              ],
             ),
             // Search Field
             Padding(
@@ -164,7 +304,8 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
               child: LGSearchField(
                 controller: _searchController,
                 placeholder: 'Search calls',
-                onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+                onChanged: (val) =>
+                    setState(() => _searchQuery = val.trim().toLowerCase()),
               ),
             ),
             // Filter Pills (All, Missed)
@@ -172,76 +313,28 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
               padding: EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, 8),
               child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      setState(() => _segment = 0);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: _segment == 0
-                            ? accent.withValues(alpha: isDark ? 0.25 : 0.16)
-                            : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05)),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: _segment == 0 ? accent.withValues(alpha: 0.6) : Colors.transparent,
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        'All',
-                        style: TextStyle(
-                          color: _segment == 0 ? accent : AppColors.textSecondary(isDark),
-                          fontWeight: _segment == 0 ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
+                  AppFilterChip(
+                    label: 'All',
+                    isSelected: _segment == 0,
+                    onTap: () => setState(() => _segment = 0),
                   ),
                   const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      setState(() => _segment = 1);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: _segment == 1
-                            ? accent.withValues(alpha: isDark ? 0.25 : 0.16)
-                            : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05)),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: _segment == 1 ? accent.withValues(alpha: 0.6) : Colors.transparent,
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        'Missed',
-                        style: TextStyle(
-                          color: _segment == 1 ? accent : AppColors.textSecondary(isDark),
-                          fontWeight: _segment == 1 ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
+                  AppFilterChip(
+                    label: 'Missed',
+                    isSelected: _segment == 1,
+                    onTap: () => setState(() => _segment = 1),
                   ),
                 ],
               ),
             ),
             // Call List
             Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: currentUserId.isNotEmpty
-                    ? FirebaseFirestore.instance
-                        .collection("Users")
-                        .doc(currentUserId)
-                        .collection("call_logs")
-                        .orderBy("timestamp", descending: true)
-                        .snapshots()
-                    : null,
-                builder: (context, snapshot) {
+              child: Builder(
+                builder: (context) {
+                  _ensureStream(currentUserId);
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: _callsStream,
+                    builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CupertinoActivityIndicator());
                   }
@@ -254,7 +347,9 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
                       return false;
                     }
                     if (_searchQuery.isNotEmpty) {
-                      final name = (data['otherUserName'] ?? '').toString().toLowerCase();
+                      final name = (data['otherUserName'] ?? '')
+                          .toString()
+                          .toLowerCase();
                       if (!name.contains(_searchQuery)) return false;
                     }
                     return true;
@@ -265,10 +360,13 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(CupertinoIcons.phone, size: 52, color: AppColors.textMuted(isDark)),
+                          Icon(CupertinoIcons.phone,
+                              size: 52, color: AppColors.textMuted(isDark)),
                           SizedBox(height: AppSpacing.sm),
                           Text(
-                            _segment == 1 ? 'No missed calls' : 'No recent calls',
+                            _segment == 1
+                                ? 'No missed calls'
+                                : 'No recent calls',
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w600,
@@ -278,7 +376,8 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
                           SizedBox(height: AppSpacing.xs),
                           Text(
                             'Stay connected with audio and video calls',
-                            style: TextStyle(color: AppColors.textMuted(isDark)),
+                            style:
+                                TextStyle(color: AppColors.textMuted(isDark)),
                           ),
                         ],
                       ),
@@ -289,7 +388,8 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
                     padding: const EdgeInsets.only(bottom: 110),
                     children: [
                       Padding(
-                        padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
+                        padding: EdgeInsets.fromLTRB(AppSpacing.md,
+                            AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
                         child: Text(
                           'RECENT',
                           style: TextStyle(
@@ -305,99 +405,186 @@ class _CallsTabScreenState extends ConsumerState<CallsTabScreen>
                         margin: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                         children: docs.map((doc) {
                           final data = doc.data();
-                          final otherUserId = (data['otherUserId'] ?? doc.id).toString();
-                          final username = (data['otherUserName'] ?? 'User').toString();
-                          final imageUrl = (data['otherUserImageUrl'] ?? '').toString();
-                          final direction = (data['direction'] ?? 'outgoing').toString();
+                          final otherUserId =
+                              (data['otherUserId'] ?? doc.id).toString();
+                          String username =
+                              (data['otherUserName'] ?? '').toString();
+                          if (username.isEmpty || username == 'User') {
+                            if (_resolvedNames[otherUserId]?.isNotEmpty ==
+                                true) {
+                              username = _resolvedNames[otherUserId]!;
+                            } else {
+                              _resolveMissingUsername(otherUserId);
+                              username = 'User';
+                            }
+                          }
+                          final imageUrl =
+                              (data['otherUserImageUrl'] ?? '').toString();
+                          final direction =
+                              (data['direction'] ?? 'outgoing').toString();
                           final status = (data['status'] ?? '').toString();
-                          final durationSeconds = (data['durationSeconds'] as int?) ?? 0;
-                          final timestamp = (data['timestamp'] as Timestamp?)?.toDate();
+                          final durationSeconds =
+                              (data['durationSeconds'] as int?) ?? 0;
+                          final timestamp =
+                              (data['timestamp'] as Timestamp?)?.toDate();
                           final formattedTime = _formatTimestamp(timestamp);
                           final durationStr = _formatDuration(durationSeconds);
                           final isMissed = status == 'missed';
 
-                          return CupertinoListTile(
-                            leading: UserAvatar(
-                              username: username,
-                              imageUrl: imageUrl,
-                              radius: 22,
+                          return RepaintBoundary(
+                            key: ValueKey('call_log_${doc.id}'),
+                            child: Dismissible(
+                              key: Key('call_log_${doc.id}'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              color: CupertinoColors.destructiveRed,
+                              child: const Icon(CupertinoIcons.trash,
+                                  color: Colors.white, size: 22),
                             ),
-                            title: Text(
-                              username,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: isMissed ? CupertinoColors.systemRed : AppColors.textPrimary(isDark),
-                              ),
-                            ),
-                            subtitle: Row(
-                              children: [
-                                Icon(
-                                  isMissed
-                                      ? CupertinoIcons.phone_arrow_down_left
-                                      : (direction == 'incoming'
-                                          ? CupertinoIcons.phone_arrow_down_left
-                                          : CupertinoIcons.phone_arrow_up_right),
-                                  size: 14,
-                                  color: isMissed
-                                      ? CupertinoColors.systemRed
-                                      : (direction == 'incoming'
-                                          ? AppColors.success
-                                          : AppColors.textMuted(isDark)),
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    isMissed
-                                        ? 'Missed${formattedTime.isNotEmpty ? " • $formattedTime" : ""}'
-                                        : '${direction == "incoming" ? "Incoming" : "Outgoing"}${durationStr.isNotEmpty ? " • $durationStr" : ""}${formattedTime.isNotEmpty ? " • $formattedTime" : ""}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isMissed ? CupertinoColors.systemRed : AppColors.textMuted(isDark),
+                            confirmDismiss: (_) async {
+                              return await showCupertinoDialog<bool>(
+                                context: context,
+                                builder: (ctx) => CupertinoAlertDialog(
+                                  title: const Text('Delete Call Log'),
+                                  content: Text('Delete call with $username?'),
+                                  actions: [
+                                    CupertinoDialogAction(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child: const Text('Cancel'),
                                     ),
+                                    CupertinoDialogAction(
+                                      isDestructiveAction: true,
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            onDismissed: (_) => _deleteCallLog(doc.id),
+                            child: GestureDetector(
+                              onLongPress: () {
+                                _showCallActions(
+                                  context: context,
+                                  logId: doc.id,
+                                  otherUserId: otherUserId,
+                                  username: username,
+                                  imageUrl: imageUrl,
+                                );
+                              },
+                              child: CupertinoListTile(
+                                padding: AppSpacing.listTilePadding,
+                                leadingSize: AppSpacing.listTileLeadingSize,
+                                leadingToTitle:
+                                    AppSpacing.listTileLeadingToTitle,
+                                onTap: () {
+                                  _showCallActions(
+                                    context: context,
+                                    logId: doc.id,
+                                    otherUserId: otherUserId,
+                                    username: username,
+                                    imageUrl: imageUrl,
+                                  );
+                                },
+                                leading: UserAvatar(
+                                  username: username,
+                                  imageUrl: imageUrl,
+                                  radius: AppAvatarSize.listTile,
+                                ),
+                                title: Text(
+                                  username,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: isMissed
+                                        ? CupertinoColors.systemRed
+                                        : AppColors.textPrimary(isDark),
                                   ),
                                 ),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CupertinoButton(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  onPressed: () {
-                                    _initiateCall(
-                                      receiverId: otherUserId,
-                                      receiverName: username,
-                                      receiverImageUrl: imageUrl,
-                                      callType: CallType.voice,
-                                    );
-                                  },
-                                  child: Icon(CupertinoIcons.phone, color: accent, size: 22),
+                                subtitle: Row(
+                                  children: [
+                                    Icon(
+                                      isMissed
+                                          ? CupertinoIcons.phone_arrow_down_left
+                                          : (direction == 'incoming'
+                                              ? CupertinoIcons
+                                                  .phone_arrow_down_left
+                                              : CupertinoIcons
+                                                  .phone_arrow_up_right),
+                                      size: 14,
+                                      color: isMissed
+                                          ? CupertinoColors.systemRed
+                                          : (direction == 'incoming'
+                                              ? AppColors.success
+                                              : AppColors.textMuted(isDark)),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        isMissed
+                                            ? 'Missed${formattedTime.isNotEmpty ? " • $formattedTime" : ""}'
+                                            : '${direction == "incoming" ? "Incoming" : "Outgoing"}${durationStr.isNotEmpty ? " • $durationStr" : ""}${formattedTime.isNotEmpty ? " • $formattedTime" : ""}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: isMissed
+                                              ? CupertinoColors.systemRed
+                                              : AppColors.textMuted(isDark),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                CupertinoButton(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  onPressed: () {
-                                    _initiateCall(
-                                      receiverId: otherUserId,
-                                      receiverName: username,
-                                      receiverImageUrl: imageUrl,
-                                      callType: CallType.video,
-                                    );
-                                  },
-                                  child: Icon(CupertinoIcons.video_camera, color: accent, size: 24),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CupertinoButton(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8),
+                                      onPressed: () {
+                                        _initiateCall(
+                                          receiverId: otherUserId,
+                                          receiverName: username,
+                                          receiverImageUrl: imageUrl,
+                                          callType: CallType.voice,
+                                        );
+                                      },
+                                      child: Icon(CupertinoIcons.phone,
+                                          color: accent, size: 22),
+                                    ),
+                                    CupertinoButton(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8),
+                                      onPressed: () {
+                                        _initiateCall(
+                                          receiverId: otherUserId,
+                                          receiverName: username,
+                                          receiverImageUrl: imageUrl,
+                                          callType: CallType.video,
+                                        );
+                                      },
+                                      child: Icon(CupertinoIcons.video_camera,
+                                          color: accent, size: 24),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
-                          );
+                          ),
+                        );
                         }).toList(),
                       ),
                       const SizedBox(height: 110),
                     ],
                   );
                 },
-              ),
-            ),
+              );
+            },
+          ),
+        ),
           ],
         ),
       ),

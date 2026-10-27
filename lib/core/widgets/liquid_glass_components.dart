@@ -9,6 +9,7 @@ export 'liquid_glass_navigation_bar.dart';
 export 'liquid_glass_container.dart';
 export 'glass_card.dart';
 export 'glass_button.dart';
+export 'glass_action_sheet.dart';
 export 'lg_context_menu.dart';
 
 typedef LGPanel = LiquidGlassContainer;
@@ -78,7 +79,7 @@ class LGIconButton extends StatelessWidget {
   }
 }
 
-/// WhatsApp iOS Liquid Glass Search Field with AI halo option.
+/// WhatsApp iOS Liquid Glass Search Field.
 class LGSearchField extends StatelessWidget {
   final TextEditingController controller;
   final String placeholder;
@@ -90,17 +91,16 @@ class LGSearchField extends StatelessWidget {
   const LGSearchField({
     super.key,
     required this.controller,
-    this.placeholder = 'Ask Meta AI or Search',
+    this.placeholder = 'Search',
     this.onChanged,
     this.onClear,
     this.onAiTap,
-    this.showAiRing = true,
+    this.showAiRing = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
-    final accent = CupertinoTheme.of(context).primaryColor;
 
     return Container(
       height: 40,
@@ -154,44 +154,6 @@ class LGSearchField extends StatelessWidget {
                   CupertinoIcons.clear_circled_solid,
                   size: 18,
                   color: AppColors.textMuted(isDark),
-                ),
-              ),
-            )
-          else if (showAiRing)
-            GestureDetector(
-              onTap: onAiTap,
-              child: Container(
-                width: 22,
-                height: 22,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: SweepGradient(
-                    colors: [
-                      Color(0xFF007AFF),
-                      Color(0xFF3B82F6),
-                      Color(0xFF10B981),
-                      Color(0xFFF59E0B),
-                      Color(0xFFEC4899),
-                      Color(0xFF007AFF),
-                    ],
-                  ),
-                ),
-                padding: const EdgeInsets.all(2),
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isDark ? const Color(0xFF1E1E22) : const Color(0xFFEEEEF2),
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: accent,
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ),

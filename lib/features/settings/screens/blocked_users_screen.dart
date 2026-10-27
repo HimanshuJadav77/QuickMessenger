@@ -5,14 +5,14 @@ import 'package:quick_messenger/core/providers/auth_providers.dart';
 import 'package:quick_messenger/core/theme/app_colors.dart';
 import 'package:quick_messenger/core/theme/app_spacing.dart';
 import 'package:quick_messenger/core/widgets/app_snackbar.dart';
+import 'package:quick_messenger/core/widgets/user_avatar.dart';
 
 /// iOS-native Blocked Users screen.
 class BlockedUsersScreen extends ConsumerStatefulWidget {
   const BlockedUsersScreen({super.key});
 
   @override
-  ConsumerState<BlockedUsersScreen> createState() =>
-      _BlockedUsersScreenState();
+  ConsumerState<BlockedUsersScreen> createState() => _BlockedUsersScreenState();
 }
 
 class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
@@ -82,8 +82,7 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
                       .doc(blockedUserId)
                       .snapshots(),
                   builder: (context, uSnapshot) {
-                    if (uSnapshot.connectionState ==
-                        ConnectionState.waiting) {
+                    if (uSnapshot.connectionState == ConnectionState.waiting) {
                       return const SizedBox(
                         height: 60,
                         child: Center(child: CupertinoActivityIndicator()),
@@ -99,39 +98,17 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
                         (userData["userimageurl"] ?? '').toString();
 
                     return CupertinoListTile(
-                      leading: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: imageUrl.isEmpty
-                              ? CupertinoTheme.of(context).primaryColor
-                              : null,
-                          image: imageUrl.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(imageUrl),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        child: imageUrl.isEmpty
-                            ? Center(
-                                child: Text(
-                                  username.isNotEmpty
-                                      ? username[0].toUpperCase()
-                                      : '?',
-                                  style: const TextStyle(
-                                    color: CupertinoColors.white,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              )
-                            : null,
+                      padding: AppSpacing.listTilePadding,
+                      leadingSize: AppSpacing.listTileLeadingSize,
+                      leadingToTitle: AppSpacing.listTileLeadingToTitle,
+                      leading: UserAvatar(
+                        username: username,
+                        imageUrl: imageUrl,
+                        radius: AppAvatarSize.listTile,
                       ),
                       title: Text(
                         username,
-                        style:
-                            TextStyle(color: AppColors.textPrimary(isDark)),
+                        style: TextStyle(color: AppColors.textPrimary(isDark)),
                       ),
                       trailing: CupertinoButton(
                         padding: EdgeInsets.zero,

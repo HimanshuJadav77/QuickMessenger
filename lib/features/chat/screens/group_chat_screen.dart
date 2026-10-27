@@ -43,6 +43,17 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     NetworkCheck().initializeInternetStatus(context);
+    _scrollC.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (_scrollC.position.pixels <= 100 &&
+        !ref
+            .read(groupMessagesProvider(widget.groupId).notifier)
+            .isLoadingMore &&
+        ref.read(groupMessagesProvider(widget.groupId).notifier).hasMore) {
+      ref.read(groupMessagesProvider(widget.groupId).notifier).loadMore();
+    }
   }
 
   @override
@@ -81,10 +92,10 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
 
     // Send via Riverpod notifier (handles Socket + SQLite + Firestore)
     await ref.read(groupMessagesProvider(widget.groupId).notifier).sendMessage(
-      senderId: uid,
-      groupId: widget.groupId,
-      text: text,
-    );
+          senderId: uid,
+          groupId: widget.groupId,
+          text: text,
+        );
     _messageC.clear();
     _scrollToBottom();
   }
@@ -105,7 +116,6 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
     ref.read(groupsProvider.notifier).loadGroups();
     Navigator.pop(context);
   }
-
 
   void _openGroupProfile() {
     Navigator.push(
@@ -138,128 +148,172 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
             onPressed: _handleBack,
           ),
           trailing: CupertinoButton(
-
-          padding: EdgeInsets.zero,
-          onPressed: _openGroupProfile,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: CupertinoTheme.of(context).primaryColor,
+            padding: EdgeInsets.zero,
+            onPressed: _openGroupProfile,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: CupertinoTheme.of(context).primaryColor,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      CupertinoIcons.group_solid,
+                      color: CupertinoTheme.of(context).primaryContrastingColor,
+                      size: 16,
+                    ),
+                  ),
                 ),
-                child: const Center(
-                  child: Icon(CupertinoIcons.group_solid, color: CupertinoColors.white, size: 16),
+                Icon(
+                  CupertinoIcons.chevron_right,
+                  size: 14,
+                  color: AppColors.textSecondary(isDark),
+                ),
+              ],
+            ),
+          ),
+          border: Border(
+            bottom: BorderSide(
+              color: AppColors.divider(isDark),
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              Expanded(
+                child: messagesAsync.when(
+                  loading: () =>
+                      const Center(child: CupertinoActivityIndicator()),
+                  error: (e, st) => Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(CupertinoIcons.exclamationmark_triangle,
+                            size: 48, color: CupertinoColors.systemRed),
+                        SizedBox(height: AppSpacing.sm),
+                        Text("Failed to load messages",
+                            style: TextStyle(color: CupertinoColors.systemRed)),
+                        SizedBox(height: AppSpacing.xs),
+                        Text(e.toString(),
+                            style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  data: (messages) {
+                    if (messages.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(CupertinoIcons.chat_bubble_2,
+                                size: 54, color: AppColors.textMuted(isDark)),
+                            SizedBox(height: AppSpacing.sm),
+                            Text("No messages yet",
+                                style: TextStyle(
+                                    color: AppColors.textSecondary(isDark))),
+                            SizedBox(height: AppSpacing.xs),
+                            Text("Say hi to the group!",
+                                style: TextStyle(
+                                    color: AppColors.textMuted(isDark),
+                                    fontSize: 13)),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      controller: _scrollC,
+                      reverse: true,
+                      findChildIndexCallback: (Key key) {
+                        if (key is ValueKey<String>) {
+                          final id = key.value;
+                          final idx =
+                              messages.indexWhere((m) => m.messageId == id);
+                          if (idx != -1) return messages.length - 1 - idx;
+                        }
+                        return null;
+                      },
+                      padding: EdgeInsets.only(
+                        top: AppSpacing.sm,
+                        bottom: AppSpacing.sm,
+                        left: AppSpacing.sm,
+                        right: AppSpacing.sm,
+                      ),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final msg = messages[messages.length - 1 - index];
+                        final isMe = msg.senderId == currentUserId;
+
+                        return RepaintBoundary(
+                          key: ValueKey(msg.messageId),
+                          child: MessageBubble(
+                            message: msg,
+                            isMe: isMe,
+                            animateEntrance: index == 0,
+                          onReply: null,
+                          onForward: null,
+                          onEdit: isMe
+                              ? (newText) {
+                                  ref
+                                      .read(
+                                          groupMessagesProvider(widget.groupId)
+                                              .notifier)
+                                      .editMessage(msg.messageId, newText);
+                                }
+                              : null,
+                          onToggleReaction: (emoji) {
+                            ref
+                                .read(groupMessagesProvider(widget.groupId)
+                                    .notifier)
+                                .toggleReaction(
+                                    msg.messageId, emoji, currentUserId);
+                          },
+                          onDeleteForMe: () {
+                            ref
+                                .read(groupMessagesProvider(widget.groupId)
+                                    .notifier)
+                                .deleteForMe(msg.messageId);
+                          },
+                          onDeleteForEveryone: isMe
+                              ? () {
+                                  ref
+                                      .read(
+                                          groupMessagesProvider(widget.groupId)
+                                              .notifier)
+                                      .deleteForEveryone(msg.messageId);
+                                }
+                              : null,
+                          onMediaDownloaded: (downloadedPath) {
+                            ref
+                                .read(groupMessagesProvider(widget.groupId)
+                                    .notifier)
+                                .updateMessageLocalPath(
+                                    msg.messageId, downloadedPath);
+                          },
+                        ),
+                      );
+                      },
+                    );
+                  },
                 ),
               ),
-              SizedBox(width: AppSpacing.xs),
-              const Icon(CupertinoIcons.chevron_right, size: 14),
+              MessageInput(
+                controller: _messageC,
+                onChanged: (_) {},
+                onSend: _handleSend,
+                onAttach: null, // group attachments not yet implemented
+              ),
             ],
           ),
         ),
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.divider(isDark),
-            width: 0.5,
-          ),
-        ),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: messagesAsync.when(
-                loading: () => const Center(child: CupertinoActivityIndicator()),
-                error: (e, st) => Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(CupertinoIcons.exclamationmark_triangle,
-                          size: 48, color: CupertinoColors.systemRed),
-                      SizedBox(height: AppSpacing.sm),
-                      Text("Failed to load messages",
-                          style: TextStyle(color: CupertinoColors.systemRed)),
-                      SizedBox(height: AppSpacing.xs),
-                      Text(e.toString(), style: const TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                ),
-                data: (messages) {
-                  if (messages.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(CupertinoIcons.chat_bubble_2,
-                              size: 54, color: AppColors.textMuted(isDark)),
-                          SizedBox(height: AppSpacing.sm),
-                          Text("No messages yet",
-                              style: TextStyle(color: AppColors.textSecondary(isDark))),
-                          SizedBox(height: AppSpacing.xs),
-                          Text("Say hi to the group!",
-                              style: TextStyle(color: AppColors.textMuted(isDark), fontSize: 13)),
-                        ],
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    controller: _scrollC,
-                    reverse: true,
-                    padding: EdgeInsets.only(
-                      top: AppSpacing.sm,
-                      bottom: AppSpacing.sm,
-                      left: AppSpacing.sm,
-                      right: AppSpacing.sm,
-                    ),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = messages[messages.length - 1 - index];
-                      final isMe = msg.senderId == currentUserId;
-
-                      return MessageBubble(
-                        key: ValueKey(msg.messageId),
-                        message: msg,
-                        isMe: isMe,
-                        animateEntrance: true,
-                        onReply: null,
-                        onForward: null,
-                        onEdit: isMe ? (newText) {
-                          ref.read(groupMessagesProvider(widget.groupId).notifier)
-                              .editMessage(msg.messageId, newText);
-                        } : null,
-                        onToggleReaction: (emoji) {
-                          ref.read(groupMessagesProvider(widget.groupId).notifier)
-                              .toggleReaction(msg.messageId, emoji, currentUserId);
-                        },
-                        onDeleteForMe: () {
-                          ref.read(groupMessagesProvider(widget.groupId).notifier)
-                              .deleteForMe(msg.messageId);
-                        },
-                        onDeleteForEveryone: isMe ? () {
-                          ref.read(groupMessagesProvider(widget.groupId).notifier)
-                              .deleteForEveryone(msg.messageId);
-                        } : null,
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            MessageInput(
-              controller: _messageC,
-              onChanged: (_) {},
-              onSend: _handleSend,
-              onAttach: null, // group attachments not yet implemented
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
+    );
+  }
 }

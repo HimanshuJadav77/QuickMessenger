@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Colors;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quick_messenger/core/services/avatar_cache_service.dart';
 
 /// WhatsApp iOS Liquid Glass Gradient Avatar.
 ///
@@ -10,6 +12,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// - Specular liquid glass rim border and subtle elevation shadow
 /// - Automatic fallback if network image fails
 /// - Optional online status badge
+/// Centralized semantic avatar sizing categories for QuickMessenger.
+class AppAvatarSize {
+  AppAvatarSize._();
+
+  /// Primary list tiles (Conversations, Groups, Contacts, Following, Search, Blocked): 52px diameter
+  static const double listTile = 26.0;
+
+  /// Navigation headers & chat app bars: 36px diameter
+  static const double header = 18.0;
+
+  /// Compact list rows & notification items: 40px diameter
+  static const double compact = 20.0;
+
+  /// Horizontal selection tray chips: 44px diameter
+  static const double chip = 22.0;
+
+  /// Settings hero profile card: 60px diameter
+  static const double settingsHero = 30.0;
+
+  /// Full profile screens: 96px diameter
+  static const double profileHero = 48.0;
+
+  /// Large call hero avatar: 110px diameter
+  static const double callHero = 55.0;
+}
+
 class UserAvatar extends ConsumerWidget {
   final String username;
   final String? seed;
@@ -28,7 +56,7 @@ class UserAvatar extends ConsumerWidget {
     required this.username,
     this.seed,
     this.imageUrl,
-    this.radius = 24.0,
+    this.radius = AppAvatarSize.listTile,
     this.backgroundColor,
     this.textColor,
     this.fontSize,
@@ -75,17 +103,35 @@ class UserAvatar extends ConsumerWidget {
     return _gradientPalettes[index];
   }
 
+  static String formatDirectImageUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    final trimmed = url.trim();
+    if (!trimmed.startsWith('http')) return trimmed;
+
+    // Convert Google Drive links to direct CDN image URLs
+    if (trimmed.contains('drive.google.com')) {
+      final idMatch = RegExp(r'(?:id=|\/d\/|open\?id=)([a-zA-Z0-9_-]+)')
+          .firstMatch(trimmed);
+      if (idMatch != null) {
+        final fileId = idMatch.group(1);
+        return 'https://lh3.googleusercontent.com/d/$fileId';
+      }
+    }
+    return trimmed;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
     final name = username.trim();
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    final hashKey = (seed != null && seed!.isNotEmpty)
-        ? '$seed-$name'
+    final hashKey = (seed != null && seed!.trim().isNotEmpty)
+        ? seed!.trim()
         : (name.isNotEmpty ? name : 'user');
     final colors = _getGradient(hashKey);
     final size = radius * 2;
     final calcFontSize = fontSize ?? (radius * 0.72);
+    final resolvedUrl = formatDirectImageUrl(imageUrl);
 
     final textChild = Center(
       child: Text(
@@ -134,13 +180,12 @@ class UserAvatar extends ConsumerWidget {
         ),
       ),
       child: ClipOval(
-        child: (imageUrl != null && imageUrl!.trim().isNotEmpty)
-            ? Image.network(
-                imageUrl!,
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => textChild,
+        child: resolvedUrl.isNotEmpty
+            ? _AvatarImage(
+                url: resolvedUrl,
+                seed: seed,
+                size: size,
+                fallback: textChild,
               )
             : textChild,
       ),
@@ -163,7 +208,9 @@ class UserAvatar extends ConsumerWidget {
                     : const Color(0xFF8E8E93),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+                  color: isDark
+                      ? const Color(0xFF000000)
+                      : const Color(0xFFFFFFFF),
                   width: 2.0,
                 ),
               ),
@@ -172,6 +219,8 @@ class UserAvatar extends ConsumerWidget {
         ],
       );
     }
+
+    avatarCore = RepaintBoundary(child: avatarCore);
 
     if (heroTag != null && heroTag!.isNotEmpty) {
       avatarCore = Hero(tag: heroTag!, child: avatarCore);
@@ -185,3 +234,124 @@ class UserAvatar extends ConsumerWidget {
   }
 }
 
+class _AvatarImage extends StatefulWidget {
+  final String url;
+  final String? seed;
+  final double size;
+  final Widget fallback;
+
+  const _AvatarImage({
+    required this.url,
+    required this.seed,
+    required this.size,
+    required this.fallback,
+  });
+
+  @override
+  State<_AvatarImage> createState() => _AvatarImageState();
+}
+
+class _AvatarImageState extends State<_AvatarImage> {
+  String? _localPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLocalCache();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AvatarImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url || oldWidget.seed != widget.seed) {
+      _checkLocalCache();
+    }
+  }
+
+  void _checkLocalCache() {
+    if (!widget.url.startsWith('http')) {
+      _localPath = widget.url;
+      return;
+    }
+
+    final syncHit = AvatarCacheService.instance.getCachedPathSync(
+      userId: widget.seed,
+      url: widget.url,
+    );
+    if (syncHit != null) {
+      _localPath = syncHit;
+      return;
+    }
+
+    // Asynchronously fetch and cache
+    AvatarCacheService.instance
+        .getOrFetchAvatar(
+      userId: widget.seed,
+      url: widget.url,
+    )
+        .then((path) {
+      if (mounted && path != null && _localPath != path) {
+        setState(() => _localPath = path);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pixelRatio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.0;
+    final cacheDim = (widget.size * pixelRatio).round().clamp(48, 512);
+
+    if (_localPath != null && _localPath!.isNotEmpty) {
+      return Image.file(
+        File(_localPath!),
+        width: widget.size,
+        height: widget.size,
+        cacheWidth: cacheDim,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => widget.fallback,
+      );
+    }
+
+    if (widget.url.startsWith('http')) {
+      return Image.network(
+        widget.url,
+        width: widget.size,
+        height: widget.size,
+        cacheWidth: cacheDim,
+        fit: BoxFit.cover,
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (wasSynchronouslyLoaded || frame != null) {
+            return child;
+          }
+          return widget.fallback;
+        },
+        errorBuilder: (_, __, ___) {
+          if (widget.url.contains('googleusercontent.com/d/')) {
+            final idMatch =
+                RegExp(r'\/d\/([a-zA-Z0-9_-]+)').firstMatch(widget.url);
+            if (idMatch != null) {
+              final fileId = idMatch.group(1);
+              return Image.network(
+                'https://drive.google.com/thumbnail?id=$fileId&sz=w500',
+                width: widget.size,
+                height: widget.size,
+                cacheWidth: cacheDim,
+                fit: BoxFit.cover,
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded || frame != null) {
+                    return child;
+                  }
+                  return widget.fallback;
+                },
+                errorBuilder: (_, __, ___) => widget.fallback,
+              );
+            }
+          }
+          return widget.fallback;
+        },
+      );
+    }
+
+    return widget.fallback;
+  }
+}

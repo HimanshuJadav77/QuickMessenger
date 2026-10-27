@@ -5,4 +5,3 @@ final socketConnectionProvider = StreamProvider<bool>((ref) {
   // Start with current connected state
   return SocketService.instance.connectionStateStream;
 });
-

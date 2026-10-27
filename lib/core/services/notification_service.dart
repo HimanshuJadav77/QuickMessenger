@@ -14,12 +14,14 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotification = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _localNotification =
+      FlutterLocalNotificationsPlugin();
 
   bool _isInitializing = false;
   bool _isRequestingPermission = false;
   StreamSubscription? _authSub;
   StreamSubscription? _tokenRefreshSub;
+  Timer? _periodicTokenRefreshTimer;
 
   Future<void> initialize() async {
     if (_isInitializing) return;
@@ -34,8 +36,16 @@ class NotificationService {
       _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
         if (user != null) {
           getFirebaseMessagingToken();
+          _startPeriodicTokenRefresh();
+        } else {
+          _stopPeriodicTokenRefresh();
         }
       });
+
+      // Start periodic token refresh if user is already signed in
+      if (FirebaseAuth.instance.currentUser != null) {
+        _startPeriodicTokenRefresh();
+      }
     } catch (e) {
       // Safe fallback if permission or initialization error occurs
     } finally {
@@ -43,7 +53,20 @@ class NotificationService {
     }
   }
 
-  Future<void> getFirebaseMessagingToken() async {
+  void _startPeriodicTokenRefresh() {
+    _periodicTokenRefreshTimer?.cancel();
+    _periodicTokenRefreshTimer =
+        Timer.periodic(const Duration(hours: 12), (_) async {
+      await getFirebaseMessagingToken(forceRefresh: true);
+    });
+  }
+
+  void _stopPeriodicTokenRefresh() {
+    _periodicTokenRefreshTimer?.cancel();
+    _periodicTokenRefreshTimer = null;
+  }
+
+  Future<void> getFirebaseMessagingToken({bool forceRefresh = false}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -75,7 +98,10 @@ class NotificationService {
     _tokenRefreshSub = _messaging.onTokenRefresh.listen((newToken) async {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        await FirebaseFirestore.instance.collection("Users").doc(currentUser.uid).set({
+        await FirebaseFirestore.instance
+            .collection("Users")
+            .doc(currentUser.uid)
+            .set({
           "fcmToken": newToken,
         }, SetOptions(merge: true));
       }
@@ -85,13 +111,15 @@ class NotificationService {
   void Function(Map<String, dynamic> callData)? onIncomingCall;
 
   Future<void> initializeLocalNotification() async {
-    const AndroidInitializationSettings androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const AndroidInitializationSettings androidInit =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const DarwinInitializationSettings iosInit = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
-    const InitializationSettings initSettings = InitializationSettings(android: androidInit, iOS: iosInit);
+    const InitializationSettings initSettings =
+        InitializationSettings(android: androidInit, iOS: iosInit);
 
     await _localNotification.initialize(
       settings: initSettings,
@@ -116,8 +144,9 @@ class NotificationService {
       importance: Importance.max,
     );
 
-    final androidPlugin = _localNotification
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin =
+        _localNotification.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(channel);
     await androidPlugin?.createNotificationChannel(callChannel);
   }
@@ -132,7 +161,9 @@ class NotificationService {
         onIncomingCall?.call(data);
         await _localNotification.show(
           id: 999999,
-          title: message.notification?.title ?? data['callerName'] ?? 'Incoming Call',
+          title: message.notification?.title ??
+              data['callerName'] ??
+              'Incoming Call',
           body: message.notification?.body ?? 'Incoming call...',
           notificationDetails: const NotificationDetails(
             android: AndroidNotificationDetails(
@@ -144,7 +175,8 @@ class NotificationService {
               category: AndroidNotificationCategory.call,
             ),
           ),
-          payload: 'call|${data['callId'] ?? ''}|${data['callerId'] ?? ''}|${data['channelId'] ?? ''}|${data['token'] ?? ''}|${data['callType'] ?? 'audio'}|${data['callerName'] ?? 'Someone'}|${data['callerImageUrl'] ?? ''}',
+          payload:
+              'call|${data['callId'] ?? ''}|${data['callerId'] ?? ''}|${data['channelId'] ?? ''}|${data['token'] ?? ''}|${data['callType'] ?? 'audio'}|${data['callerName'] ?? 'Someone'}|${data['callerImageUrl'] ?? ''}',
         );
         return;
       }
@@ -152,7 +184,8 @@ class NotificationService {
       final conversationId = data['conversationId'];
 
       // If recipient is actively viewing the same chat, suppress foreground banner
-      if (conversationId != null && SocketService.instance.activeConversationId == conversationId) {
+      if (conversationId != null &&
+          SocketService.instance.activeConversationId == conversationId) {
         return;
       }
 
@@ -160,7 +193,8 @@ class NotificationService {
 
       await _localNotification.show(
         id: message.hashCode,
-        title: message.notification?.title ?? data['senderName'] ?? 'New Message',
+        title:
+            message.notification?.title ?? data['senderName'] ?? 'New Message',
         body: message.notification?.body ?? 'Sent a message',
         notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
@@ -249,4 +283,3 @@ class NotificationService {
     }
   }
 }
-

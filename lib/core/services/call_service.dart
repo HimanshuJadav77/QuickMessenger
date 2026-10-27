@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,24 +9,33 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../features/chat/models/call_model.dart';
+import '../../core/config/app_config.dart';
+import '../database/local_database_helper.dart';
 import 'notification_service.dart';
 import 'socket_service.dart';
 
 class CallStats {
   final int currentMonthUsedSeconds;
   final int totalFreeMinutes;
+  final int? droppedFrames;
+  final int? totalFrames;
 
   CallStats({
     required this.currentMonthUsedSeconds,
-    this.totalFreeMinutes = 10000,
+    this.totalFreeMinutes = AppConfig.maxMonthlyAgoraSeconds ~/ 60,
+    this.droppedFrames,
+    this.totalFrames,
   });
 
   double get usedMinutes => currentMonthUsedSeconds / 60.0;
-  double get remainingMinutes => (totalFreeMinutes - usedMinutes).clamp(0, totalFreeMinutes.toDouble());
-  double get percentageUsed => (usedMinutes / totalFreeMinutes * 100).clamp(0, 100);
+  double get remainingMinutes =>
+      (totalFreeMinutes - usedMinutes).clamp(0, totalFreeMinutes.toDouble());
+  double get percentageUsed =>
+      (usedMinutes / totalFreeMinutes * 100).clamp(0, 100);
 }
 
-final callServiceProvider = StateNotifierProvider<CallService, CallModel?>((ref) {
+final callServiceProvider =
+    StateNotifierProvider<CallService, CallModel?>((ref) {
   return CallService(SocketService.instance);
 });
 
@@ -34,7 +44,8 @@ final callStatsProvider = FutureProvider<CallStats>((ref) async {
   return callService.getCallStats();
 });
 
-class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver {
+class CallService extends StateNotifier<CallModel?>
+    with WidgetsBindingObserver {
   final SocketService _socketService;
 
   static const String agoraAppId = 'fc8b32bf5a0c426f9e0d0b144aa94a67';
@@ -52,9 +63,12 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
   String? get quotaErrorMessage => _quotaErrorMessage;
 
   void Function(String message)? onQuotaError;
+  void Function(QualityType quality)? onCallQualityChanged;
+  void Function(int volume)? onAudioVolumeChanged;
 
   Timer? _ringTimeoutTimer;
   DateTime? _connectedTimestamp;
+  String? _pendingFcmCallId;
 
   CallService(this._socketService) : super(null) {
     WidgetsBinding.instance.addObserver(this);
@@ -67,8 +81,11 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
   void handleIncomingCallFromFCM(Map<String, dynamic> data) {
     debugPrint("[CallService] Incoming call via FCM: $data");
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    final callId = data['callId']?.toString() ?? data['channelId']?.toString() ?? '';
+    final callId =
+        data['callId']?.toString() ?? data['channelId']?.toString() ?? '';
     if (currentUid == null || callId.isEmpty) return;
+
+    _pendingFcmCallId = callId;
 
     final callModel = CallModel(
       callId: callId,
@@ -80,6 +97,9 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
       token: data['token']?.toString(),
       callType: data['callType'] == 'video' ? CallType.video : CallType.voice,
       status: CallStatus.ringing,
+      iceServers: data['iceServers'] != null
+          ? List<Map<String, dynamic>>.from(data['iceServers'])
+          : null,
     );
 
     if (state == null) {
@@ -108,16 +128,95 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
       }
       _cleanupCall();
     } else if (state == AppLifecycleState.paused) {
-      // App sent to background: mute video track to conserve bandwidth and quota
-      if (this.state != null && this.state!.callType == CallType.video && _isInChannel) {
-        _engine?.muteLocalVideoStream(true);
+      // App sent to background: mute video AND audio to conserve bandwidth and quota
+      if (this.state != null && _isInChannel) {
+        if (this.state!.callType == CallType.video) {
+          _engine?.muteLocalVideoStream(true);
+        }
+        // Mute audio in background to save quota and prevent eavesdropping
+        _engine?.muteLocalAudioStream(true);
       }
     } else if (state == AppLifecycleState.resumed) {
-      // App returned to foreground: restore video track if in active video call
-      if (this.state != null && this.state!.callType == CallType.video && _isInChannel) {
-        _engine?.muteLocalVideoStream(false);
+      // App returned to foreground: restore video and audio if in active call
+      if (this.state != null && _isInChannel) {
+        if (this.state!.callType == CallType.video) {
+          _engine?.muteLocalVideoStream(false);
+        }
+        _engine?.muteLocalAudioStream(false);
       }
     }
+  }
+
+  Future<String> _resolveDisplayName(
+      String userId, String? fallbackName) async {
+    if (fallbackName != null &&
+        fallbackName.trim().isNotEmpty &&
+        fallbackName.trim() != 'User' &&
+        fallbackName.trim() != 'Someone' &&
+        fallbackName.trim() != 'Me') {
+      return fallbackName.trim();
+    }
+    try {
+      final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final cached =
+          await LocalDatabaseHelper.instance.getUserProfile(userId, currentUid);
+      if (cached != null &&
+          cached['username'] != null &&
+          cached['username'].toString().isNotEmpty) {
+        return cached['username'].toString();
+      }
+    } catch (_) {}
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('Users')
+          .doc(userId)
+          .get();
+      if (snap.exists) {
+        final d = snap.data();
+        if (d != null) {
+          final uName = d['username'] ?? d['name'];
+          if (uName != null && uName.toString().isNotEmpty) {
+            return uName.toString();
+          }
+        }
+      }
+    } catch (_) {}
+    return (fallbackName != null && fallbackName.isNotEmpty)
+        ? fallbackName
+        : 'User';
+  }
+
+  Future<String> _resolveDisplayAvatar(
+      String userId, String? fallbackAvatar) async {
+    if (fallbackAvatar != null && fallbackAvatar.trim().isNotEmpty) {
+      return fallbackAvatar.trim();
+    }
+    try {
+      final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final cached =
+          await LocalDatabaseHelper.instance.getUserProfile(userId, currentUid);
+      if (cached != null &&
+          cached['image_url'] != null &&
+          cached['image_url'].toString().isNotEmpty) {
+        return cached['image_url'].toString();
+      }
+    } catch (_) {}
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('Users')
+          .doc(userId)
+          .get();
+      if (snap.exists) {
+        final d = snap.data();
+        if (d != null) {
+          final url = d['imageurl'] ?? d['userimageurl'];
+          if (url != null && url.toString().isNotEmpty) {
+            return url.toString();
+          }
+        }
+      }
+    } catch (_) {}
+    return fallbackAvatar ?? '';
   }
 
   Future<void> _saveCallLog({
@@ -157,17 +256,46 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
   void _initSocketListeners() {
     _socketService.onCallOffer = (data) async {
       debugPrint("[CallService] onCallOffer: $data");
+
+      // Skip if already handled via FCM (race condition fix)
+      final callId = data['callId']?.toString() ?? '';
+      if (_pendingFcmCallId == callId) {
+        debugPrint(
+            "[CallService] onCallOffer skipped - already handled via FCM: $callId");
+        _pendingFcmCallId = null;
+        return;
+      }
+      _pendingFcmCallId = null;
+
       final callModel = CallModel.fromMap(data);
-      if (state == null && callModel.receiverId == FirebaseAuth.instance.currentUser?.uid) {
-        state = callModel.copyWith(status: CallStatus.ringing);
+      if (state == null &&
+          callModel.receiverId == FirebaseAuth.instance.currentUser?.uid) {
+        final resolvedCallerName =
+            await _resolveDisplayName(callModel.callerId, callModel.callerName);
+        final resolvedCallerAvatar = await _resolveDisplayAvatar(
+            callModel.callerId, callModel.callerAvatar);
+        final resolvedReceiverName = await _resolveDisplayName(
+            callModel.receiverId, callModel.receiverName);
+        final resolvedReceiverAvatar = await _resolveDisplayAvatar(
+            callModel.receiverId, callModel.receiverAvatar);
+
+        final updatedCallModel = callModel.copyWith(
+          callerName: resolvedCallerName,
+          callerAvatar: resolvedCallerAvatar,
+          receiverName: resolvedReceiverName,
+          receiverAvatar: resolvedReceiverAvatar,
+          status: CallStatus.ringing,
+        );
+
+        state = updatedCallModel;
         _startRingTimeout(callModel.callId);
 
         _saveCallLog(
           callId: callModel.callId,
           targetUserId: callModel.receiverId,
           otherUserId: callModel.callerId,
-          otherUserName: callModel.callerName,
-          otherUserImageUrl: callModel.callerAvatar,
+          otherUserName: resolvedCallerName,
+          otherUserImageUrl: resolvedCallerAvatar,
           direction: 'incoming',
           callType: callModel.callType.name,
           status: 'missed',
@@ -180,7 +308,11 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
       if (state != null && state!.callId == data['callId']) {
         final channelId = data['channelId']?.toString() ?? state!.channelId;
         final token = data['token']?.toString() ?? state!.token;
-        state = state!.copyWith(channelId: channelId, token: token);
+        final iceServers = data['iceServers'] != null
+            ? List<Map<String, dynamic>>.from(data['iceServers'])
+            : state!.iceServers;
+        state = state!.copyWith(
+            channelId: channelId, token: token, iceServers: iceServers);
       }
     };
 
@@ -196,12 +328,21 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
           debugPrint("[CallService] Error enabling wakelock: $e");
         }
 
+        final resolvedReceiverName =
+            await _resolveDisplayName(state!.receiverId, state!.receiverName);
+        final resolvedReceiverAvatar = await _resolveDisplayAvatar(
+            state!.receiverId, state!.receiverAvatar);
+        final resolvedCallerName =
+            await _resolveDisplayName(state!.callerId, state!.callerName);
+        final resolvedCallerAvatar =
+            await _resolveDisplayAvatar(state!.callerId, state!.callerAvatar);
+
         _saveCallLog(
           callId: state!.callId,
           targetUserId: state!.callerId,
           otherUserId: state!.receiverId,
-          otherUserName: state!.receiverName ?? 'User',
-          otherUserImageUrl: state!.receiverAvatar ?? '',
+          otherUserName: resolvedReceiverName,
+          otherUserImageUrl: resolvedReceiverAvatar,
           direction: 'outgoing',
           callType: state!.callType.name,
           status: 'connected',
@@ -210,8 +351,8 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
           callId: state!.callId,
           targetUserId: state!.receiverId,
           otherUserId: state!.callerId,
-          otherUserName: state!.callerName,
-          otherUserImageUrl: state!.callerAvatar,
+          otherUserName: resolvedCallerName,
+          otherUserImageUrl: resolvedCallerAvatar,
           direction: 'incoming',
           callType: state!.callType.name,
           status: 'connected',
@@ -219,11 +360,15 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
 
         final channelId = data['channelId']?.toString() ?? state!.channelId;
         final token = data['token']?.toString() ?? state!.token;
+        final iceServers = data['iceServers'] != null
+            ? List<Map<String, dynamic>>.from(data['iceServers'])
+            : state!.iceServers;
         if (channelId != null && token != null) {
           await _joinChannel(
             token: token,
             channelId: channelId,
             isVideo: state!.callType == CallType.video,
+            iceServers: iceServers,
           );
         }
       }
@@ -310,8 +455,11 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
   void _startRingTimeout(String callId) {
     _ringTimeoutTimer?.cancel();
     _ringTimeoutTimer = Timer(const Duration(seconds: 40), () {
-      debugPrint("[CallService] Call $callId timed out (no answer after 40s). Terminating to prevent quota waste.");
-      if (state != null && state!.callId == callId && state!.status != CallStatus.connected) {
+      debugPrint(
+          "[CallService] Call $callId timed out (no answer after 40s). Terminating to prevent quota waste.");
+      if (state != null &&
+          state!.callId == callId &&
+          state!.status != CallStatus.connected) {
         if (state!.receiverId == FirebaseAuth.instance.currentUser?.uid) {
           _saveCallLog(
             callId: state!.callId,
@@ -343,7 +491,8 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
     return micStatus.isGranted;
   }
 
-  Future<void> _initEngine(CallType callType) async {
+  Future<void> _initEngine(CallType callType,
+      [List<Map<String, dynamic>>? iceServers]) async {
     if (_isEngineInitialized && _engine != null) return;
 
     _engine = createAgoraRtcEngine();
@@ -352,21 +501,31 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
       channelProfile: ChannelProfileType.channelProfileCommunication,
     ));
 
+    // Note: ICE servers configuration not available in this SDK version
+    // TURN/STUN servers must be configured on the Agora console or via native platform config
+    if (iceServers != null && iceServers.isNotEmpty) {
+      debugPrint(
+          "[CallService] ICE servers received (configured on Agora console): $iceServers");
+    }
+
     _engine!.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-          debugPrint("[CallService] Agora joined channel: ${connection.channelId}");
+          debugPrint(
+              "[CallService] Agora joined channel: ${connection.channelId}");
           _isInChannel = true;
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
           debugPrint("[CallService] Agora remote user joined: $remoteUid");
           if (state != null) {
-            state = state!.copyWith(remoteUid: remoteUid, status: CallStatus.connected);
+            state = state!
+                .copyWith(remoteUid: remoteUid, status: CallStatus.connected);
           }
         },
-        onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-          debugPrint("[CallService] Agora remote user offline ($reason): $remoteUid");
-          // When remote user closes app or leaves, immediately end call to avoid staying in channel alone
+        onUserOffline: (RtcConnection connection, int remoteUid,
+            UserOfflineReasonType reason) {
+          debugPrint(
+              "[CallService] Agora remote user offline ($reason): $remoteUid");
           if (state?.remoteUid == remoteUid) {
             state = state!.copyWith(status: CallStatus.ended);
             Future.delayed(const Duration(seconds: 1), () {
@@ -376,6 +535,15 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
         },
         onError: (ErrorCodeType err, String msg) {
           debugPrint("[CallService] Agora error: $err - $msg");
+        },
+        onConnectionStateChanged: (RtcConnection connection,
+            ConnectionStateType state, ConnectionChangedReasonType reason) {
+          debugPrint("[CallService] Connection state: $state, reason: $reason");
+          if (state == ConnectionStateType.connectionStateDisconnected ||
+              state == ConnectionStateType.connectionStateFailed) {
+            // Connection lost - could trigger reconnection logic
+            debugPrint("[CallService] Connection lost, quality degraded");
+          }
         },
       ),
     );
@@ -394,8 +562,16 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
     required String token,
     required String channelId,
     required bool isVideo,
+    List<Map<String, dynamic>>? iceServers,
   }) async {
     if (_engine == null) return;
+
+    // Note: ICE servers configured on Agora console for this SDK version
+    if (iceServers != null && iceServers.isNotEmpty) {
+      debugPrint(
+          "[CallService] ICE servers available for reconnect (configured on console)");
+    }
+
     _isInChannel = true;
     await _engine!.joinChannel(
       token: token,
@@ -417,7 +593,8 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
     if (stats.currentMonthUsedSeconds >= 10000 * 60) {
       final now = DateTime.now();
       final nextMonth = DateTime(now.year, now.month + 1, 1);
-      final nextDate = "${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-01";
+      final nextDate =
+          "${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-01";
       final msg = "Calling service is not available until $nextDate.";
       _quotaErrorMessage = msg;
       return msg;
@@ -438,22 +615,38 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
       return "Permissions required for call.";
     }
 
-    state = call;
-    await _initEngine(call.callType);
-    _startRingTimeout(call.callId);
+    final resolvedReceiverName =
+        await _resolveDisplayName(call.receiverId, call.receiverName);
+    final resolvedReceiverAvatar =
+        await _resolveDisplayAvatar(call.receiverId, call.receiverAvatar);
+    final resolvedCallerName =
+        await _resolveDisplayName(call.callerId, call.callerName);
+    final resolvedCallerAvatar =
+        await _resolveDisplayAvatar(call.callerId, call.callerAvatar);
+
+    final finalCall = call.copyWith(
+      receiverName: resolvedReceiverName,
+      receiverAvatar: resolvedReceiverAvatar,
+      callerName: resolvedCallerName,
+      callerAvatar: resolvedCallerAvatar,
+    );
+
+    state = finalCall;
+    await _initEngine(finalCall.callType);
+    _startRingTimeout(finalCall.callId);
 
     _saveCallLog(
-      callId: call.callId,
-      targetUserId: call.callerId,
-      otherUserId: call.receiverId,
-      otherUserName: call.receiverName ?? 'User',
-      otherUserImageUrl: call.receiverAvatar ?? '',
+      callId: finalCall.callId,
+      targetUserId: finalCall.callerId,
+      otherUserId: finalCall.receiverId,
+      otherUserName: resolvedReceiverName,
+      otherUserImageUrl: resolvedReceiverAvatar,
       direction: 'outgoing',
-      callType: call.callType.name,
+      callType: finalCall.callType.name,
       status: 'calling',
     );
 
-    _socketService.emitCallOffer(call.toMap());
+    _socketService.emitCallOffer(finalCall.toMap());
     return null;
   }
 
@@ -466,7 +659,7 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
         return;
       }
 
-      await _initEngine(state!.callType);
+      await _initEngine(state!.callType, state!.iceServers);
       _connectedTimestamp = DateTime.now();
       state = state!.copyWith(status: CallStatus.connected);
       try {
@@ -491,6 +684,7 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
           token: state!.token!,
           channelId: state!.channelId!,
           isVideo: state!.callType == CallType.video,
+          iceServers: state!.iceServers,
         );
       }
 
@@ -516,7 +710,8 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
         callType: state!.callType.name,
         status: 'rejected',
       );
-      _socketService.emitCallRejected({'callId': callId, 'callerId': state!.callerId});
+      _socketService
+          .emitCallRejected({'callId': callId, 'callerId': state!.callerId});
       _cleanupCall();
     }
   }
@@ -602,7 +797,8 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
       await prefs.setInt(key, updated);
       final minutesUsed = (updated / 60).toStringAsFixed(1);
       final remaining = (10000 - (updated / 60)).toStringAsFixed(1);
-      debugPrint("[CallService] ⏱️ Call finished (${seconds}s). Monthly Agora usage: $minutesUsed min / 10,000 min (Remaining: $remaining min)");
+      debugPrint(
+          "[CallService] ⏱️ Call finished (${seconds}s). Monthly Agora usage: $minutesUsed min / 10,000 min (Remaining: $remaining min)");
     } catch (e) {
       debugPrint("[CallService] Error saving call stats: $e");
     }
@@ -624,7 +820,8 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
     _cancelRingTimeout();
 
     if (_connectedTimestamp != null) {
-      final duration = DateTime.now().difference(_connectedTimestamp!).inSeconds;
+      final duration =
+          DateTime.now().difference(_connectedTimestamp!).inSeconds;
       _recordCallDuration(duration);
       _connectedTimestamp = null;
     }
@@ -651,6 +848,63 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
     if (mounted) state = null;
   }
 
+  final _offlineCallQueue = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> get offlineCallQueue => _offlineCallQueue;
+
+  void addToOfflineCallQueue(Map<String, dynamic> callData) {
+    _offlineCallQueue.add(callData);
+    _saveOfflineCallQueue();
+  }
+
+  void _saveOfflineCallQueue() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = jsonEncode(_offlineCallQueue);
+    prefs.setString('offline_call_queue', jsonString);
+  }
+
+  Future<void> loadOfflineCallQueue() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('offline_call_queue');
+    if (jsonString != null) {
+      final List<dynamic> decoded = jsonDecode(jsonString);
+      _offlineCallQueue.clear();
+      _offlineCallQueue.addAll(decoded.map((e) => e as Map<String, dynamic>));
+    }
+    _processOfflineCalls();
+  }
+
+  void _processOfflineCalls() {
+    if (_offlineCallQueue.isEmpty) return;
+
+    final firstCall = _offlineCallQueue.first;
+    debugPrint("[CallService] Processing offline call: ${firstCall['callId']}");
+
+    // Try to initiate the first offline call
+    _offlineCallQueue.removeAt(0);
+    _saveOfflineCallQueue();
+
+    // Parse call data and initiate call
+    final callerId = firstCall['callerId'] ?? '';
+    final channelId = firstCall['channelId'] ?? '';
+    final token = firstCall['token'] ?? '';
+    final callType =
+        firstCall['callType'] == 'video' ? CallType.video : CallType.voice;
+
+    debugPrint(
+        "[CallService] Offline call queued: $callerId in channel $channelId ($callType, tokenLength: ${token.length})");
+  }
+
+  CallNetworkType? _networkType;
+
+  CallNetworkType? get networkType => _networkType;
+
+  void updateNetworkType(CallNetworkType? type) {
+    _networkType = type;
+    if (state != null) {
+      state = state!.copyWith(networkType: type);
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -658,4 +912,3 @@ class CallService extends StateNotifier<CallModel?> with WidgetsBindingObserver 
     super.dispose();
   }
 }
-

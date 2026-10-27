@@ -12,6 +12,7 @@ import 'package:quick_messenger/core/widgets/app_snackbar.dart';
 import 'package:quick_messenger/core/widgets/glass_action_sheet.dart';
 import 'package:quick_messenger/features/profile/screens/followers_following_screen.dart';
 import 'package:quick_messenger/features/chat/screens/chat_screen.dart';
+import 'package:quick_messenger/core/widgets/user_avatar.dart';
 
 /// iOS-native other-user profile.
 ///
@@ -36,8 +37,7 @@ class SearchUserProfile extends ConsumerStatefulWidget {
   final userid;
 
   @override
-  ConsumerState<SearchUserProfile> createState() =>
-      _SearchUserProfileState();
+  ConsumerState<SearchUserProfile> createState() => _SearchUserProfileState();
 }
 
 class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
@@ -48,6 +48,7 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
   bool block = false;
   bool blockedbyUser = false;
   bool requested = false;
+  bool? _optimisticFollowing;
 
   String get currentUserId => ref.read(currentUserIdProvider);
 
@@ -255,7 +256,10 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
         .doc(widget.userid)
         .get();
     if (doc.data()?["blocked"] == true) {
-      if (mounted) showSnackBar(context, "Unblock ${widget.username} first.");
+      if (mounted) {
+        setState(() => _optimisticFollowing = null);
+        showSnackBar(context, "Unblock ${widget.username} first.");
+      }
       return;
     }
     try {
@@ -278,24 +282,27 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
             .doc(uid)
             .collection("following")
             .doc(widget.userid)
-            .update({"following": false});
+            .set({"following": false});
         await _firestore
             .collection("Users")
             .doc(widget.userid)
             .collection("followers")
             .doc(uid)
             .set({"follower": false});
-        if (mounted) setState(() => requested = false);
       }
     } on FirebaseException catch (e) {
-      if (mounted) showSnackBar(context, "$e");
+      if (mounted) {
+        setState(() => _optimisticFollowing = null);
+        showSnackBar(context, "$e");
+      }
     }
   }
 
   void _showBlockSheet() {
     LGActionSheet.showConfirmation(
       context: context,
-      title: block ? 'Unblock ${widget.username}?' : 'Block ${widget.username}?',
+      title:
+          block ? 'Unblock ${widget.username}?' : 'Block ${widget.username}?',
       message: block
           ? 'They will be able to send you messages and view your profile.'
           : 'Blocked users cannot message you or view your profile.',
@@ -326,7 +333,8 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
         context: context,
         builder: (ctx) => CupertinoAlertDialog(
           title: const Text('Private profile'),
-          content: const Text('This profile is private — send a request first.'),
+          content:
+              const Text('This profile is private — send a request first.'),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.pop(ctx),
@@ -360,7 +368,10 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
             : CupertinoButton(
                 padding: EdgeInsets.zero,
                 onPressed: _showBlockSheet,
-                child: const Icon(CupertinoIcons.ellipsis_circle),
+                child: Icon(
+                  CupertinoIcons.ellipsis_circle,
+                  color: AppColors.textPrimary(isDark),
+                ),
               ),
         border: Border(
           bottom: BorderSide(
@@ -392,8 +403,7 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
               return const Center(child: CupertinoActivityIndicator());
             }
 
-            final isBlockedByThem =
-                blockSnap.data?.data()?["blocked"] == true;
+            final isBlockedByThem = blockSnap.data?.data()?["blocked"] == true;
             if (isBlockedByThem) {
               return Center(
                 child: Padding(
@@ -417,8 +427,7 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
               builder: (context, privacySnap) {
                 if (!privacySnap.hasData ||
                     !(privacySnap.data?.exists ?? false)) {
-                  if (privacySnap.connectionState !=
-                      ConnectionState.waiting) {
+                  if (privacySnap.connectionState != ConnectionState.waiting) {
                     FirebaseFirestore.instance
                         .collection("Users")
                         .doc(widget.userid)
@@ -426,8 +435,7 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                         .doc("mode")
                         .set({"privacy": "public"});
                   }
-                  return const Center(
-                      child: CupertinoActivityIndicator());
+                  return const Center(child: CupertinoActivityIndicator());
                 }
 
                 final privacy =
@@ -439,51 +447,66 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                     SizedBox(height: AppSpacing.md),
                     // Header: avatar + counts + message button
                     Padding(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md),
+                      padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
                       child: Row(
                         children: [
-                          Container(
-                            width: 92,
-                            height: 92,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: accent.withValues(alpha: 0.15),
-                              image: (widget.imageurl ?? '')
-                                      .toString()
-                                      .isNotEmpty
-                                  ? DecorationImage(
-                                      image: NetworkImage(
-                                          widget.imageurl.toString()),
-                                      fit: BoxFit.cover,
-                                      onError: (_, __) {},
-                                    )
-                                  : null,
-                              border: Border.all(
-                                color: AppColors.divider(isDark),
-                                width: 0.5,
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              UserAvatar(
+                                username: widget.username.toString(),
+                                seed: widget.userid,
+                                imageUrl: (widget.imageurl ?? '').toString(),
+                                radius: AppAvatarSize.profileHero,
                               ),
-                            ),
-                            child: (widget.imageurl ?? '')
-                                    .toString()
-                                    .isEmpty
-                                ? Center(
-                                    child: Text(
-                                      widget.username
-                                              .toString()
-                                              .isNotEmpty
-                                          ? widget.username
-                                              .toString()[0]
-                                              .toUpperCase()
-                                          : '?',
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 2.5),
+                                decoration: BoxDecoration(
+                                  color: isPrivate
+                                      ? (isDark
+                                          ? const Color(0xFF3A2020)
+                                          : const Color(0xFFFFEEEE))
+                                      : accent.withValues(
+                                          alpha: isDark ? 0.25 : 0.14),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isPrivate
+                                        ? (isDark
+                                            ? const Color(0xFF8B2B2B)
+                                            : const Color(0xFFFFB3B3))
+                                        : accent.withValues(alpha: 0.5),
+                                    width: 0.75,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      isPrivate
+                                          ? CupertinoIcons.lock_fill
+                                          : CupertinoIcons.globe,
+                                      size: 11,
+                                      color: isPrivate
+                                          ? CupertinoColors.systemRed
+                                          : accent,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      isPrivate ? 'Private' : 'Public',
                                       style: TextStyle(
-                                        fontSize: 36,
+                                        fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: accent,
+                                        color: isPrivate
+                                            ? CupertinoColors.systemRed
+                                            : accent,
                                       ),
                                     ),
-                                  )
-                                : null,
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                           SizedBox(width: AppSpacing.md),
                           Expanded(
@@ -494,8 +517,7 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                                   ? () => Navigator.push(
                                         context,
                                         CupertinoPageRoute(
-                                          builder: (_) =>
-                                              FollowFollowingPage(
+                                          builder: (_) => FollowFollowingPage(
                                             userid: widget.userid,
                                           ),
                                         ),
@@ -511,8 +533,7 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                                         .collection("Users")
                                         .doc(widget.userid)
                                         .collection("followers")
-                                        .where("follower",
-                                            isEqualTo: true)
+                                        .where("follower", isEqualTo: true)
                                         .snapshots(),
                                     isDark: isDark,
                                   ),
@@ -522,8 +543,7 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                                         .collection("Users")
                                         .doc(widget.userid)
                                         .collection("following")
-                                        .where("following",
-                                            isEqualTo: true)
+                                        .where("following", isEqualTo: true)
                                         .snapshots(),
                                     isDark: isDark,
                                   ),
@@ -531,37 +551,34 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                               ),
                             ),
                           ),
-                          GestureDetector(
-                            onTap: _openChat,
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(46, 46),
+                            onPressed: _openChat,
                             child: Container(
-                              width: 56,
-                              height: 56,
+                              width: 46,
+                              height: 46,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: accent,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: accent.withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                               ),
-                              child: const Icon(
-                                CupertinoIcons.chat_bubble_2_fill,
-                                color: CupertinoColors.white,
-                                size: 26,
+                              child: Center(
+                                child: Icon(
+                                  CupertinoIcons.chat_bubble_2_fill,
+                                  color: AppColors.onPrimary(isDark, accent),
+                                  size: 22,
+                                ),
                               ),
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                    // Privacy badge
-                    Padding(
-                      padding: EdgeInsets.only(
-                          top: AppSpacing.xs,
-                          left: AppSpacing.md),
-                      child: Text(
-                        isPrivate ? 'Private' : 'Public',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: accent,
-                        ),
                       ),
                     ),
                     SizedBox(height: AppSpacing.sm),
@@ -581,16 +598,15 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                         if ((widget.about ?? '').toString().isNotEmpty)
                           CupertinoListTile(
                             title: const Text('About'),
-                            subtitle:
-                                Text(widget.about.toString()),
+                            subtitle: Text(widget.about.toString()),
                           ),
                       ],
                     ),
                     // Follow / Request button
                     Padding(
                       padding: EdgeInsets.all(AppSpacing.md),
-                      child: StreamBuilder<
-                          DocumentSnapshot<Map<String, dynamic>>>(
+                      child:
+                          StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                         stream: _firestore
                             .collection("Users")
                             .doc(uid)
@@ -598,28 +614,27 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                             .doc(widget.userid)
                             .snapshots(),
                         builder: (context, snap) {
-                          if (!snap.hasData ||
-                              !(snap.data?.exists ?? false)) {
-                            if (snap.connectionState !=
-                                ConnectionState.waiting) {
-                              _firestore
-                                  .collection("Users")
-                                  .doc(uid)
-                                  .collection("following")
-                                  .doc(widget.userid)
-                                  .set({"following": false});
-                            }
+                          final serverFollowing =
+                              snap.data?.data()?["following"] == true;
+                          if (_optimisticFollowing != null &&
+                              _optimisticFollowing == serverFollowing) {
+                            _optimisticFollowing = null;
+                          }
+                          final following =
+                              _optimisticFollowing ?? serverFollowing;
+                          followState = following;
+
+                          if (!snap.hasData &&
+                              _optimisticFollowing == null &&
+                              snap.connectionState ==
+                                  ConnectionState.waiting) {
                             return const SizedBox(
                               height: 48,
-                              child: Center(
-                                  child:
-                                      CupertinoActivityIndicator()),
+                              child:
+                                  Center(child: CupertinoActivityIndicator()),
                             );
                           }
 
-                          final following =
-                              snap.data?.data()?["following"] == true;
-                          followState = following;
                           final showFollow = !isPrivate ||
                               following ||
                               (isPrivate && following);
@@ -632,33 +647,27 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                                     ? () => showSnackBar(context,
                                         "Unblock ${widget.username} first.")
                                     : () {
-                                        if (!following) {
-                                          followUnfollowUser(true);
-                                        } else {
-                                          followUnfollowUser(false);
-                                          if (mounted) {
-                                            setState(() =>
-                                                requested = false);
-                                          }
+                                        final nextState = !following;
+                                        setState(() {
+                                          _optimisticFollowing = nextState;
+                                        });
+                                        followUnfollowUser(nextState);
+                                        if (!nextState) {
                                           request();
                                         }
                                       },
                                 child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
                                       following
-                                          ? CupertinoIcons
-                                              .checkmark_circle
+                                          ? CupertinoIcons.checkmark_circle
                                           : CupertinoIcons.person_add,
                                       size: 18,
                                     ),
                                     const SizedBox(width: 8),
-                                    Text(following
-                                        ? 'Following'
-                                        : 'Follow'),
+                                    Text(following ? 'Following' : 'Follow'),
                                   ],
                                 ),
                               ),
@@ -673,27 +682,22 @@ class _SearchUserProfileState extends ConsumerState<SearchUserProfile> {
                                       "Unblock ${widget.username} first.")
                                   : () {
                                       if (mounted) {
-                                        setState(() =>
-                                            requested = !requested);
+                                        setState(() => requested = !requested);
                                       }
                                       request();
                                     },
                               child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     requested
-                                        ? CupertinoIcons
-                                            .checkmark_circle
+                                        ? CupertinoIcons.checkmark_circle
                                         : CupertinoIcons.person_add,
                                     size: 18,
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(requested
-                                      ? 'Requested'
-                                      : 'Request'),
+                                  Text(requested ? 'Requested' : 'Request'),
                                 ],
                               ),
                             ),
@@ -728,20 +732,25 @@ class _FollowCount extends StatelessWidget {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: stream,
       builder: (context, snapshot) {
+        if (!snapshot.hasData &&
+            snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 38,
+            child: Center(child: CupertinoActivityIndicator(radius: 8)),
+          );
+        }
         final count = snapshot.data?.docs.length ?? 0;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            snapshot.connectionState == ConnectionState.waiting
-                ? const CupertinoActivityIndicator(radius: 8)
-                : Text(
-                    '$count',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary(isDark),
-                    ),
-                  ),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary(isDark),
+              ),
+            ),
             const SizedBox(height: 2),
             Text(
               label,
